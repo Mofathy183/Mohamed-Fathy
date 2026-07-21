@@ -1,0 +1,109 @@
+{% comment %}
+  snippets/product-popup.liquid
+  ------------------------------------------------------------------
+  Shared modal component for a single product. Rendered once per Grid
+  tile from sections/product-grid.liquid:
+    {% render 'product-popup', product: grid_product %}
+
+  Hidden by default (the `hidden` attribute below); opened by its
+  matching tile's circular marker via data-popup-target="popup-{{
+  product.id }}", wired in assets/gift-guide.js → initPopups().
+
+  Field order matches the confirmed Figma popup mock exactly (§4a):
+  close (X, top-right) → photo → name → price → description → Color
+  swatches → Size select → Add to Cart.
+
+  Depends on:
+    - assets/gift-guide.css → overlay/backdrop/panel styling (popup
+      can't use a {% style %} tag — that tag is section/block-only,
+      not available in snippets — so all of this snippet's CSS lives
+      in the shared stylesheet instead).
+    - assets/gift-guide.js → initPopups() (open/close, this phase) and
+      initVariantPickers()/addToCart() (Phase 4).
+{% endcomment %}
+
+{%- if product != blank -%}
+  <div
+    class="product-popup"
+    id="popup-{{ product.id }}"
+    data-product-popup
+    data-product-id="{{ product.id }}"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="PopupTitle-{{ product.id }}"
+    hidden
+  >
+    {%- comment %} Click-outside-to-close target. {% endcomment -%}
+    <div class="product-popup__backdrop" data-popup-close></div>
+
+    <div class="product-popup__panel">
+      <button type="button" class="product-popup__close" data-popup-close aria-label="Close">
+        &times;
+      </button>
+
+      {%- if product.featured_image != blank -%}
+        <img
+          src="{{ product.featured_image | image_url: width: 900 }}"
+          alt="{{ product.featured_image.alt | default: product.title | escape }}"
+          loading="lazy"
+          width="900"
+          height="{{ 900 | divided_by: product.featured_image.aspect_ratio }}"
+          class="product-popup__image"
+        >
+      {%- endif -%}
+
+      <h3 id="PopupTitle-{{ product.id }}" class="product-popup__title">{{ product.title }}</h3>
+
+      {%- comment %} Same EUR/comma-decimal/€-suffix note as product-grid.liquid — depends on Settings → General → currency formatting. {% endcomment -%}
+      <p class="product-popup__price">{{ product.price | money }}</p>
+
+      <p class="product-popup__description">{{ product.description | strip_html | truncate: 200 }}</p>
+
+      {%- comment %}
+        Same options_with_values-driven pattern as the grid tile —
+        nothing hardcoded, so this works for any product's real
+        option values (e.g. the seeded catalog's XS/S/M/L, not the
+        Figma mock's XS–XL/6XL example state — see build-context doc
+        §4a's callout on this).
+      {%- endcomment -%}
+      <div class="product-popup__variant-picker" data-variant-picker>
+        {%- assign popup_color_option = product.options_with_values | where: "name", "Color" | first -%}
+        {%- if popup_color_option -%}
+          <div class="product-popup__colors" role="group" aria-label="Color">
+            {%- for value in popup_color_option.values -%}
+              <button type="button" class="product-popup__color-swatch" data-option-name="Color" data-option-value="{{ value | escape }}">
+                {{ value }}
+              </button>
+            {%- endfor -%}
+          </div>
+        {%- endif -%}
+
+        {%- assign popup_size_option = product.options_with_values | where: "name", "Size" | first -%}
+        {%- if popup_size_option -%}
+          <select class="product-popup__size-select" data-option-name="Size" aria-label="Size">
+            <option value="" selected disabled>Choose your size</option>
+            {%- for value in popup_size_option.values -%}
+              <option value="{{ value | escape }}">{{ value }}</option>
+            {%- endfor -%}
+          </select>
+        {%- endif -%}
+      </div>
+
+      <button type="button" class="product-popup__add-to-cart" data-add-to-cart disabled>
+        ADD TO CART &rarr;
+      </button>
+
+      {%- comment %}
+        Same [data-product-json] pattern as the grid tile's own copy.
+        Both carry the same product id but live in different
+        containers (this panel vs. the tile), so Phase 4's JS always
+        scopes its lookup to the nearest ancestor with
+        [data-product-id] rather than doing a bare global attribute
+        match — the two never collide.
+      {%- endcomment -%}
+      <script type="application/json" data-product-json="{{ product.id }}">
+        {{ product.variants | json }}
+      </script>
+    </div>
+  </div>
+{%- endif -%}
