@@ -1,0 +1,39 @@
+# macOS
+.DS_Store
+
+# Windows
+Thumbs.db
+Desktop.ini
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Environment files
+.env
+.env.*
+
+# Dependencies (only if you use npm/pnpm locally)
+node_modules/
+
+# Shopify CLI cache
+.shopify/
+
+# VS Code
+.vscode/
+
+# JetBrains IDEs (WebStorm, IntelliJ, etc.)
+.idea/
+
+# Temporary files
+*.tmp
+*.temp
+
+# Coverage
+coverage/
+
+# Optional lockfile (uncomment only if you don't want to track it)
+# pnpm-lock.yaml
