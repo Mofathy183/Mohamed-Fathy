@@ -1,0 +1,297 @@
+{% comment %}
+  sections/banner.liquid
+  ------------------------------------------------------------------
+  Global header strip + hero banner + bottom strip for "The Gift
+  Guide" page. Built from scratch (no Dawn section reuse), per hard
+  constraint in the build-context doc §2. All copy is customizer-
+  editable via schema settings — nothing hardcoded in the markup.
+
+  Depends on:
+    - assets/custom-sections.js → initMobileHeaderToggle() wires the
+      hamburger/X toggle for the mobile two-state header.
+    - assets/custom-sections.css → shared reset rules only; all
+      section-specific styling lives in the {% style %} block below.
+
+  Scaling note (see build-context doc §4a/§8 "scaling caveat"):
+  the Figma type values (164.78px heading / 47.08px description) were
+  read off a 3,840px artboard that's very likely a 2x+ export canvas,
+  not the literal browser width. Rather than hardcode a single px
+  value that could be wildly wrong depending on the real render width,
+  headline/description sizing below uses `clamp()` scaled toward the
+  ~1920px-reference numbers the build-context doc itself suggests
+  (~82px / ~24px). Confirm against the live page once it's up and
+  adjust the clamp() bounds if needed — this is a deliberate stand-in,
+  not a literal Figma pixel value. Button sizes (244x44, 24x24 header
+  height fractions) are used at face value since the doc only flagged
+  *type* values as needing rescaling, not UI chrome.
+{% endcomment %}
+
+<section class="banner__section section-{{ section.id }}" data-section-id="{{ section.id }}" data-section-type="banner">
+
+  {%- comment %} ── Global header bar (wordmark / tagline / CHOOSE GIFT) ── {% endcomment -%}
+  <div class="banner__header">
+    <div class="banner__header-row">
+      <span class="banner__wordmark">{{ section.settings.wordmark }}</span>
+
+      {%- comment %} Mobile-only hamburger/X toggle. Hidden on desktop via CSS. {% endcomment -%}
+      <button
+        type="button"
+        class="banner__nav-toggle"
+        data-nav-toggle
+        aria-expanded="false"
+        aria-controls="BannerHeaderExpand-{{ section.id }}"
+        aria-label="Toggle menu"
+      >
+        <span class="banner__nav-icon-open">&#9776;</span>
+        <span class="banner__nav-icon-close">&times;</span>
+      </button>
+
+      {%- comment %} Desktop: tagline + button sit inline here. Mobile: same markup is re-shown below the toggle when expanded (see CSS) rather than duplicated in the DOM. {% endcomment -%}
+      <div class="banner__header-expand" id="BannerHeaderExpand-{{ section.id }}" data-nav-expand>
+        <p class="banner__tagline">{{ section.settings.tagline }}</p>
+        <a href="{{ section.settings.header_button_link | default: '#' }}" class="banner__button banner__button--yellow">
+          {{ section.settings.header_button_label }} &rarr;
+        </a>
+      </div>
+    </div>
+  </div>
+
+  {%- comment %} ── Hero banner content ── {% endcomment -%}
+  <div class="banner__hero">
+    <h1 class="banner__heading">{{ section.settings.heading }}</h1>
+    <div class="banner__description">{{ section.settings.description }}</div>
+    <a href="{{ section.settings.banner_button_link | default: '#' }}" class="banner__button banner__button--black">
+      {{ section.settings.banner_button_label }} &rarr;
+    </a>
+  </div>
+
+  {%- comment %} ── Bottom strip ── {% endcomment -%}
+  <div class="banner__bottom-strip">
+    <p>{{ section.settings.bottom_strip_text }}</p>
+  </div>
+</section>
+
+{%- comment %}
+  Loaded once here since Banner is always the first section on the
+  Gift Guide page (see templates/page.gift-guide.json) — avoids
+  loading gift-guide.js/css a second time from product-grid.liquid or
+  snippets/product-popup.liquid.
+{% endcomment -%}
+<link rel="stylesheet" href="{{ 'gift-guide.css' | asset_url }}">
+<script src="{{ 'gift-guide.js' | asset_url }}" defer="defer"></script>
+
+{% style %}
+  .section-{{ section.id }} {
+    background: #ffffff;
+  }
+
+  /* Header bar */
+  .banner__header {
+    background: #f5f5f5;
+    padding: 0.83rem 4.17rem; /* ~26.67px / 133.33px scaled at 0.5 from a 1920px reference */
+  }
+  .banner__header-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    /* the Figma spec's 720px "gap" only makes sense at the 3840px
+        canvas width — space-between reproduces the same visual intent
+        (wordmark far left, controls far right) at any real width */
+  }
+  .banner__wordmark {
+    font-family: 'Jost', sans-serif;
+    font-weight: 500;
+    font-size: 1.25rem;
+  }
+  .banner__tagline {
+    font-family: 'Jost', sans-serif;
+    margin: 0;
+  }
+  .banner__nav-toggle {
+    display: none; /* shown only in the mobile breakpoint below */
+    background: none;
+    border: none;
+    font-size: 1.5rem;
+    cursor: pointer;
+    padding: 0;
+  }
+  .banner__nav-icon-close { display: none; }
+  .banner__nav-toggle[aria-expanded="true"] .banner__nav-icon-open { display: none; }
+  .banner__nav-toggle[aria-expanded="true"] .banner__nav-icon-close { display: inline; }
+
+  .banner__header-expand {
+    display: flex;
+    align-items: center;
+    gap: 1.5rem;
+  }
+
+  /* Buttons — used at face value (see scaling note above) */
+  .banner__button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 244px;
+    height: 44px;
+    text-decoration: none;
+    font-family: 'Jost', sans-serif;
+    font-weight: 500;
+    transition: opacity 300ms ease-out, transform 300ms ease-out; /* Figma: While Hovering → Change To, Ease Out, 300ms */
+  }
+  .banner__button--yellow {
+    background: #fff544;
+    color: #000000;
+  }
+  .banner__button--black {
+    background: #000000;
+    color: #ffffff;
+  }
+  .banner__button:hover,
+  .banner__button:focus-visible {
+    opacity: 0.85;
+    transform: translateY(-1px);
+  }
+
+  /* Hero */
+  .banner__hero {
+    padding: 4rem;
+    max-width: 60ch;
+    /* Illustration background (camera/watch/compass line-art) is a
+       static design asset per §4a — set via section.settings.illustration
+       below rather than hardcoded here; falls back to plain white if unset. */
+    background-image: {% if section.settings.illustration != blank %}url('{{ section.settings.illustration | image_url: width: 2000 }}'){% else %}none{% endif %};
+    background-repeat: no-repeat;
+    background-position: right center;
+    background-size: contain;
+  }
+  .banner__heading {
+    font-family: 'Jost', sans-serif;
+    font-weight: 500;
+    font-size: clamp(2.5rem, 3vw + 2rem, 5.15rem); /* ~scaling toward ~82px desktop, see note above */
+    line-height: 1;
+    letter-spacing: 0;
+    color: #000000;
+    margin: 0 0 1.5rem;
+  }
+  .banner__description {
+    font-family: 'Jost', sans-serif;
+    font-weight: 400;
+    font-size: clamp(1rem, 0.6vw + 0.85rem, 1.5rem); /* ~scaling toward ~24px desktop */
+    line-height: 1.4;
+    color: #000000;
+    margin: 0 0 2rem;
+  }
+
+  /* Bottom strip */
+  .banner__bottom-strip {
+    width: 100%;
+    text-align: center;
+    text-transform: uppercase;
+    font-family: 'Jost', sans-serif;
+    font-size: 0.75rem;
+    padding: 1rem;
+    border-top: 1px solid #eeeeee;
+  }
+
+  /* Mobile — Frame 1, 402px fixed width per §4a Dev Mode inspect.
+     Stacked order confirmed: header → heading → description →
+     yellow CTA → black CTA. */
+  @media (max-width: 480px) {
+    .banner__nav-toggle {
+      display: block;
+    }
+    .banner__header-expand {
+      display: none;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 0.75rem;
+      margin-top: 0.75rem;
+    }
+    .banner__header-expand[data-expanded="true"] {
+      display: flex;
+    }
+    .banner__hero {
+      background-image: none; /* illustration is desktop-only per §4a mobile description */
+      max-width: 100%;
+      padding: 2rem 1.25rem;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+    }
+    .banner__button {
+      width: 100%;
+      margin-bottom: 0.75rem;
+    }
+  }
+{% endstyle %}
+
+{% schema %}
+{
+  "name": "Banner",
+  "settings": [
+    {
+      "type": "text",
+      "id": "wordmark",
+      "label": "Wordmark / logo text",
+      "default": "TISSO VISON"
+    },
+    {
+      "type": "text",
+      "id": "tagline",
+      "label": "Header tagline",
+      "default": "Find the ideal gift for your loved ones."
+    },
+    {
+      "type": "text",
+      "id": "header_button_label",
+      "label": "Header button label",
+      "default": "CHOOSE GIFT"
+    },
+    {
+      "type": "url",
+      "id": "header_button_link",
+      "label": "Header button link"
+    },
+    {
+      "type": "text",
+      "id": "heading",
+      "label": "Heading",
+      "default": "The Gift Guide"
+    },
+    {
+      "type": "richtext",
+      "id": "description",
+      "label": "Description",
+      "default": "<p>Discover Joy: Your Ultimate Holiday Gift Destination. Explore our curated selection and find the perfect gifts to delight your loved ones this holiday season.</p>"
+    },
+    {
+      "type": "text",
+      "id": "banner_button_label",
+      "label": "Banner button label",
+      "default": "SHOP NOW"
+    },
+    {
+      "type": "url",
+      "id": "banner_button_link",
+      "label": "Banner button link"
+    },
+    {
+      "type": "image_picker",
+      "id": "illustration",
+      "label": "Banner illustration background",
+      "info": "Line-art background asset from the Figma export (camera, watch, compass, etc). Desktop only — hidden on mobile per the Figma mobile frames."
+    },
+    {
+      "type": "text",
+      "id": "bottom_strip_text",
+      "label": "Bottom strip text",
+      "default": "SUSTAINABLE, ETHICALLY MADE CLOTHES IN SIZES XXS TO 6XL"
+    }
+  ],
+  "presets": [
+    {
+      "name": "Banner"
+    }
+  ]
+}
+{% endschema %}
