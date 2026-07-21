@@ -1,0 +1,296 @@
+{% comment %}
+  sections/product-grid.liquid
+  ------------------------------------------------------------------
+  "Tisso vison in the wild" product grid — 6 merchant-selectable
+  products (customizer product-picker blocks), 3-col desktop / stacked
+  mobile. Built from scratch (no Dawn section reuse), per hard
+  constraint in the build-context doc §2.
+
+  Depends on:
+    - assets/gift-guide.css (shared reset/animation/popup-overlay rules)
+    - assets/gift-guide.js (Phase 4: color/size selection + add-to-cart
+      + Black/Medium → Soft Winter Jacket cross-sell). NOTE: the
+      <script> tag itself is loaded once from sections/banner.liquid,
+      since Banner always renders first on this page — this file just
+      relies on that script already being on the page.
+    - snippets/product-popup.liquid (Phase 3: rendered per tile,
+      opened via the circular marker's data-popup-target)
+
+  IMPORTANT — Shopify schema limitation (read before editing defaults):
+  Resource-reference setting types (`product`, `collection`, `page`,
+  etc.) CANNOT carry a `default` value in `{% schema %}` — Shopify
+  doesn't allow static defaults for anything that references a
+  resource by ID, and this applies to block presets too. So the six
+  confirmed handles from §4b of the build-context doc
+  (olive-green-jacket, chequered-red-shirt, classic-leather-jacket,
+  striped-silk-blouse, yellow-wool-jumper, classic-varsity-top) can't
+  be wired in as literal schema defaults the way the plan doc implies.
+
+  Fix used here: the `presets` block below pre-creates 6 empty
+  `product` blocks so the section looks right when first added in the
+  customizer, and the Liquid loop falls back to looking up one of the
+  six confirmed handles via `all_products` whenever a block's product
+  setting hasn't been explicitly chosen yet by a merchant. Once a
+  merchant swaps in a real selection, that takes over automatically.
+{% endcomment %}
+
+{%- assign fallback_handles = "olive-green-jacket,chequered-red-shirt,classic-leather-jacket,striped-silk-blouse,yellow-wool-jumper,classic-varsity-top" | split: ',' -%}
+
+<section class="product-grid__section section-{{ section.id }}" data-section-id="{{ section.id }}" data-section-type="product-grid">
+
+  <h2 class="product-grid__heading">{{ section.settings.heading }}</h2>
+
+  <div class="product-grid__tiles">
+    {%- for block in section.blocks -%}
+      {%- assign grid_product = block.settings.product -%}
+
+      {%- if grid_product == blank -%}
+        {%- comment %} No merchant selection yet — fall back to the confirmed default handle for this slot. {% endcomment -%}
+        {%- assign fallback_handle = fallback_handles[forloop.index0] -%}
+        {%- assign grid_product = all_products[fallback_handle] -%}
+      {%- endif -%}
+
+      {%- if grid_product == blank or grid_product == empty -%}
+        {%- comment %} Defensive empty state: neither a merchant pick nor a valid fallback exists. Render a clean placeholder instead of breaking the grid. {% endcomment -%}
+        <div class="product-grid__tile product-grid__tile--empty" {{ block.shopify_attributes }}>
+          <p class="product-grid__placeholder-text">Select a product in the theme customizer</p>
+        </div>
+      {%- else -%}
+        <div
+          class="product-grid__tile"
+          data-product-id="{{ grid_product.id }}"
+          data-product-handle="{{ grid_product.handle }}"
+          {{ block.shopify_attributes }}
+        >
+
+          {%- comment %} Photo + popup trigger marker. Styled as a plain outlined dot per Figma, not a literal "+" glyph. {% endcomment -%}
+          <div class="product-grid__image-wrap">
+            {%- if grid_product.featured_image != blank -%}
+              <img
+                src="{{ grid_product.featured_image | image_url: width: 900 }}"
+                alt="{{ grid_product.featured_image.alt | default: grid_product.title | escape }}"
+                loading="lazy"
+                width="900"
+                height="{{ 900 | divided_by: grid_product.featured_image.aspect_ratio }}"
+                class="product-grid__image"
+              >
+            {%- endif -%}
+            <button
+              type="button"
+              class="product-grid__popup-trigger"
+              data-popup-target="popup-{{ grid_product.id }}"
+              aria-label="View {{ grid_product.title | escape }} details"
+            ></button>
+          </div>
+
+          <h3 class="product-grid__title">{{ grid_product.title }}</h3>
+
+          {%- comment %} EUR / comma-decimal / €-suffix format ("980,00€"). Requires Settings → General → Store currency formatting set to a custom HTML format like "{{ amount_with_comma_separator }}€" so this stays store-configurable rather than string-hacked here. {% endcomment -%}
+          <p class="product-grid__price">{{ grid_product.price | money }}</p>
+
+          <p class="product-grid__description">{{ grid_product.description | strip_html | truncate: 120 }}</p>
+
+          {%- comment %} Color + size controls live on the tile itself (per Figma), separate from the popup's identical controls. Both read from the same embedded variants JSON below so Phase 4 JS has one source of truth per product. {% endcomment -%}
+          <div class="product-grid__variant-picker" data-variant-picker>
+            {%- assign color_option = grid_product.options_with_values | where: "name", "Color" | first -%}
+            {%- if color_option -%}
+              <div class="product-grid__colors" role="group" aria-label="Color">
+                {%- for value in color_option.values -%}
+                  <button type="button" class="product-grid__color-swatch" data-option-name="Color" data-option-value="{{ value | escape }}">
+                    {{ value }}
+                  </button>
+                {%- endfor -%}
+              </div>
+            {%- endif -%}
+
+            {%- assign size_option = grid_product.options_with_values | where: "name", "Size" | first -%}
+            {%- if size_option -%}
+              <select class="product-grid__size-select" data-option-name="Size" aria-label="Size">
+                <option value="" selected disabled>Choose your size</option>
+                {%- for value in size_option.values -%}
+                  <option value="{{ value | escape }}">{{ value }}</option>
+                {%- endfor -%}
+              </select>
+            {%- endif -%}
+          </div>
+
+          <button type="button" class="product-grid__add-to-cart" data-add-to-cart>
+            ADD TO CART &rarr;
+          </button>
+
+          {%- comment %} Embedded once per tile; consumed by assets/gift-guide.js (variant resolution) and mirrored in the popup snippet below by matching product id. {% endcomment -%}
+          <script type="application/json" data-product-json="{{ grid_product.id }}">
+            {{ grid_product.variants | json }}
+          </script>
+        </div>
+
+        {%- comment %} Popup for this tile's product — hidden until its marker (data-popup-target above) is clicked. {% endcomment -%}
+        {%- render 'product-popup', product: grid_product -%}
+      {%- endif -%}
+    {%- endfor -%}
+  </div>
+</section>
+
+{% style %}
+  .section-{{ section.id }} {
+    padding: 4rem 2rem;
+  }
+  .product-grid__heading {
+    font-family: 'Jost', sans-serif;
+    font-weight: 500;
+    text-align: center;
+    margin-bottom: 2.5rem;
+  }
+  .product-grid__tiles {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr); /* desktop: 2 rows x 3 cols */
+    gap: 2.5rem;
+  }
+  .product-grid__tile {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+  .product-grid__image-wrap {
+    position: relative;
+  }
+  .product-grid__image {
+    width: 100%;
+    height: auto;
+    display: block;
+  }
+  .product-grid__popup-trigger {
+    position: absolute;
+    top: 12px;
+    left: 12px;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: #fff;
+    border: 1px solid #000;
+    cursor: pointer;
+    padding: 0;
+  }
+  .product-grid__title {
+    font-family: 'Jost', sans-serif;
+    font-weight: 500;
+    margin: 0;
+  }
+  .product-grid__price,
+  .product-grid__description {
+    font-family: 'Jost', sans-serif;
+    margin: 0;
+  }
+  .product-grid__colors {
+    display: flex;
+    border: 1px solid #000;
+  }
+  .product-grid__color-swatch {
+    flex: 1;
+    padding: 0.5rem;
+    background: transparent;
+    border: none;
+    border-right: 1px solid #000;
+    cursor: pointer;
+    font-family: 'Jost', sans-serif;
+  }
+  .product-grid__color-swatch:last-child {
+    border-right: none;
+  }
+  .product-grid__color-swatch[aria-pressed="true"] {
+    background: #000;
+    color: #fff;
+  }
+  .product-grid__size-select {
+    width: 100%;
+    padding: 0.5rem;
+    font-family: 'Jost', sans-serif;
+  }
+  .product-grid__add-to-cart {
+    background: #000;
+    color: #fff;
+    border: none;
+    padding: 0.75rem 1rem;
+    width: 100%;
+    cursor: pointer;
+    font-family: 'Jost', sans-serif;
+    transition: opacity 300ms ease-out;
+  }
+  .product-grid__add-to-cart:hover,
+  .product-grid__add-to-cart:focus-visible {
+    opacity: 0.8;
+  }
+  .product-grid__add-to-cart[disabled] {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+  .product-grid__tile--empty {
+    border: 1px dashed #ccc;
+    padding: 2rem;
+    text-align: center;
+  }
+
+  /* NOTE — mobile breakpoint ambiguity: the build-context doc (§4a mobile
+    section) describes the "in the wild" gallery as a confirmed 2-column
+    layout, but then separately describes the 6 full product tiles as
+    full-width single-column at the same 402px Frame 1 width. It isn't
+    fully clear whether these are the same 6 tiles at two different
+    states, or two different pieces of content. Implemented here as a
+    two-tier breakpoint: a wider mobile/tablet tier keeps 2 columns,
+    and the narrow 402px tier (matching Frame 1 exactly) drops to a
+    single column. Re-check this directly against the Figma mobile
+    frames before final submission and simplify to one tier if the
+    doc's "2-column gallery" turns out to just describe the same tiles. */
+  @media (max-width: 768px) {
+    .product-grid__tiles {
+      grid-template-columns: repeat(2, 1fr);
+    }
+  }
+  @media (max-width: 480px) {
+    .product-grid__tiles {
+      grid-template-columns: 1fr;
+    }
+  }
+{% endstyle %}
+
+{% schema %}
+{
+  "name": "Product Grid",
+  "settings": [
+    {
+      "type": "text",
+      "id": "heading",
+      "label": "Section heading",
+      "default": "Tisso vison in the wild"
+    }
+  ],
+  "blocks": [
+    {
+      "type": "product",
+      "name": "Product",
+      "settings": [
+        {
+          "type": "product",
+          "id": "product",
+          "label": "Product",
+          "info": "Pick a product to populate this grid slot. If left unset, one of the six products confirmed for this build (see §4b) is used as a fallback."
+        }
+      ]
+    }
+  ],
+  "max_blocks": 6,
+  "presets": [
+    {
+      "name": "Product Grid",
+      "blocks": [
+        { "type": "product" },
+        { "type": "product" },
+        { "type": "product" },
+        { "type": "product" },
+        { "type": "product" },
+        { "type": "product" }
+      ]
+    }
+  ]
+}
+{% endschema %}
