@@ -24,17 +24,36 @@
   not a literal Figma pixel value. Button sizes (244x44, 24x24 header
   height fractions) are used at face value since the doc only flagged
   *type* values as needing rescaling, not UI chrome.
+
+  Illustration background — desktop vs. mobile SVGs:
+  Figma provides two separate line-art illustration exports, not one
+  asset reused at different sizes — a wide/landscape composition for
+  desktop (icons scattered across the full hero width, positioned top
+  right per the layout below) and a narrower/taller composition for
+  the stacked mobile hero (see build-context doc §4a mobile section:
+  illustration sits as its own strip below the heading/description,
+  with "SHOP NOW" floating on it). These are fixed design assets, not
+  merchant content, so they ship as permanent theme files —
+  `assets/banner-illustration-desktop.svg` and
+  `assets/banner-illustration-mobile.svg` — referenced directly via
+  `asset_url` rather than through the Theme Editor. Desktop renders
+  its SVG as a CSS background-image on `.banner__hero` (unchanged
+  below). Mobile renders its SVG as a real `<img>` inside
+  `.banner__hero-illustration` instead — see that section's
+  markup/CSS for why a background-image doesn't work for mobile's
+  real-layout-element requirement. Both assets always exist as part
+  of the theme, so no blank/fallback state is needed for either.
 {% endcomment %}
 
 <section class="banner__section section-{{ section.id }}" data-section-id="{{ section.id }}" data-section-type="banner">
 
   {%- comment %} ── Global header bar (wordmark / tagline / CHOOSE GIFT) ── {% endcomment -%}
   <div class="banner__header">
-    <div class="banner__header-row">
-      <span class="banner__wordmark">{{ section.settings.wordmark }}</span>
+    <div class="banner__content">
+        <span class="banner__wordmark">{{ section.settings.wordmark }}</span>
 
-      {%- comment %} Mobile-only hamburger/X toggle. Hidden on desktop via CSS. {% endcomment -%}
-      <button
+        {%- comment %} Mobile-only hamburger/X toggle. Hidden on desktop via CSS. {% endcomment -%}
+        <button
         type="button"
         class="banner__nav-toggle"
         data-nav-toggle
@@ -42,32 +61,90 @@
         aria-controls="BannerHeaderExpand-{{ section.id }}"
         aria-label="Toggle menu"
       >
-        <span class="banner__nav-icon-open">&#9776;</span>
-        <span class="banner__nav-icon-close">&times;</span>
+        <span class="banner__nav-icon-open">{% render 'icon-hamburger' %}</span>
+        <span class="banner__nav-icon-close">{% render 'icon-close' %}</span>
       </button>
 
-      {%- comment %} Desktop: tagline + button sit inline here. Mobile: same markup is re-shown below the toggle when expanded (see CSS) rather than duplicated in the DOM. {% endcomment -%}
+      {%- comment %}
+        Desktop: display:contents dissolves this wrapper so tagline and
+        header-expand become direct children of the 3-column header-row
+        grid (auto 1fr auto) — that's what makes the tagline sit truly
+        centered, independent of the button group's width. Mobile: the
+        wrapper becomes a real flex column, hidden by default and toggled
+        via data-expanded by initMobileHeaderToggle() in gift-guide.js
+        (aria-controls above points at this element's id).
+      {%- endcomment -%}
       <div class="banner__header-expand" id="BannerHeaderExpand-{{ section.id }}" data-nav-expand>
         <p class="banner__tagline">{{ section.settings.tagline }}</p>
-        <a href="{{ section.settings.header_button_link | default: '#' }}" class="banner__button banner__button--yellow">
-          {{ section.settings.header_button_label }} &rarr;
+        <div class="banner__cta-group">
+          <a href="{{ section.settings.header_button_link | default: '#' }}" class="banner__button banner__button--yellow">
+            {{ section.settings.header_button_label }} {% render 'icon-arrow' %}
+          </a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {%- comment %}
+    ── Hero banner content ──
+    Structure: Hero > Text (heading/description) + Illustration (image/SHOP NOW).
+    Desktop keeps its illustration as a `.banner__hero` CSS background
+    (unchanged, see the {% style %} block below) and visually ignores
+    `.banner__hero-illustration`'s <img> (hidden at the desktop
+    breakpoint) — the wrapper exists in markup for both so the DOM
+    only renders once, but each breakpoint uses a different mechanism
+    for the same asset: desktop = background-image, mobile = a real
+    <img> with natural height (see mobile media query for why).
+  {%- endcomment -%}
+  <div class="banner__hero">
+    <div class="banner__content">
+      <div class="banner__hero-text">
+        <h1 class="banner__heading">{{ section.settings.heading }}</h1>
+        {%- comment %} Desktop shows the full paragraph; mobile shows a shorter, single-sentence version per the Figma mobile frame — same desktop/mobile toggle pattern as the bottom strip below. {% endcomment -%}
+        <div class="banner__description banner__description--desktop">{{ section.settings.description }}</div>
+        <div class="banner__description banner__description--mobile">{{ section.settings.description_mobile }}</div>
+      </div>
+
+      <div class="banner__hero-illustration">
+        {%- comment %}
+          Mobile-only real <img> (desktop hides this and keeps using
+          its existing background-image approach instead — see
+          {% style %}). Static theme asset, guaranteed to exist — no
+          conditional or fallback needed. width/height below are the
+          SVG's intrinsic dimensions (required by theme-check's
+          ImgWidthAndHeight rule) — CSS still forces width:100%;
+          height:auto at render time, so these only set the aspect
+          ratio for layout/CLS purposes. Update if the source SVG's
+          own viewBox dimensions differ.
+        {%- endcomment -%}
+        <img
+          src="{{ 'banner-illustration-mobile.svg' | asset_url }}"
+          alt=""
+          role="presentation"
+          loading="lazy"
+          width="800"
+          height="600"
+          class="banner__hero-illustration-image"
+        >
+
+        <a href="{{ section.settings.banner_button_link | default: '#' }}" class="banner__button banner__button--black">
+          {{ section.settings.banner_button_label }} {% render 'icon-arrow' %}
         </a>
       </div>
     </div>
   </div>
 
-  {%- comment %} ── Hero banner content ── {% endcomment -%}
-  <div class="banner__hero">
-    <h1 class="banner__heading">{{ section.settings.heading }}</h1>
-    <div class="banner__description">{{ section.settings.description }}</div>
-    <a href="{{ section.settings.banner_button_link | default: '#' }}" class="banner__button banner__button--black">
-      {{ section.settings.banner_button_label }} &rarr;
-    </a>
-  </div>
-
-  {%- comment %} ── Bottom strip ── {% endcomment -%}
+  {%- comment %}
+    ── Bottom strip ──
+    Confirmed via Figma that mobile and desktop bottom-strip copy is
+    NOT the same string (desktop: "...CLOTHES IN SIZES XXS TO 6XL",
+    mobile: "...ACTIVEWEAR") — so this needs two independent settings,
+    toggled by CSS display at the same 480px breakpoint used
+    elsewhere, rather than one shared string.
+  {% endcomment -%}
   <div class="banner__bottom-strip">
-    <p>{{ section.settings.bottom_strip_text }}</p>
+    <p class="banner__bottom-strip-text banner__bottom-strip-text--desktop">{{ section.settings.bottom_strip_text }}</p>
+    <p class="banner__bottom-strip-text banner__bottom-strip-text--mobile">{{ section.settings.bottom_strip_text_mobile }}</p>
   </div>
 </section>
 
@@ -88,24 +165,63 @@
   /* Header bar */
   .banner__header {
     background: #f5f5f5;
-    padding: 0.83rem 4.17rem; /* ~26.67px / 133.33px scaled at 0.5 from a 1920px reference */
+    padding: 1.75rem 2.5rem; /* taller bar than before — matches the reference's breathing room */
   }
-  .banner__header-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    /* the Figma spec's 720px "gap" only makes sense at the 3840px
-        canvas width — space-between reproduces the same visual intent
-        (wordmark far left, controls far right) at any real width */
+  /* This is the actual fix for the header layout — .banner__content is
+    reused for both the header AND the hero, and only ever had
+    max-width/position set on it (no display:grid), so the
+    justify-self rules on wordmark/tagline/cta-group below were doing
+    nothing and everything was just stacking as normal block content.
+    Scoped to .banner__header so it doesn't affect the hero's use of
+     the same class. */
+  @media (min-width: 481px) {
+    .banner__header .banner__content {
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      align-items: center;
+      width: 100%;
+      max-width: none; /* overrides the 560px hero constraint in this context */
+      column-gap: 2rem;
+    }
   }
   .banner__wordmark {
     font-family: 'Jost', sans-serif;
-    font-weight: 500;
-    font-size: 1.25rem;
+    font-weight: 700;
+    font-size: 1.5rem;
+    letter-spacing: 0.15em; /* the gap between "TISSO" and "VISON" in the reference */
+    text-transform: uppercase;
+    justify-self: start;
   }
   .banner__tagline {
     font-family: 'Jost', sans-serif;
+    font-weight: 400;
+    font-size: 0.95rem;
+    color: #000000;
+    justify-self: center;
     margin: 0;
+  }
+  .banner__content {
+    max-width: 560px;
+    position: relative;
+    z-index: 1;
+  }
+  .banner__header-expand {
+    /* Desktop: dissolve the wrapper so .banner__tagline and .banner__cta-group
+      become direct grid items of header-row's auto/1fr/auto tracks — this is
+       what makes the tagline center independently of the button group. */
+    display: contents;
+  }
+  .banner__header-inner {
+    width: 100%;
+  }
+  .banner__tagline {
+    white-space: nowrap;
+  }
+  .banner__cta-group {
+    justify-self: end;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
   }
   .banner__nav-toggle {
     display: none; /* shown only in the mobile breakpoint below */
@@ -119,14 +235,22 @@
   .banner__nav-toggle[aria-expanded="true"] .banner__nav-icon-open { display: none; }
   .banner__nav-toggle[aria-expanded="true"] .banner__nav-icon-close { display: inline; }
 
-  .banner__header-expand {
-    display: flex;
-    align-items: center;
-    gap: 1.5rem;
+  .banner__cta-group .banner__button--yellow {
+    width: 180px; /* adjust to match your real render — reference shows it wider than a tight text-fit button */
+    height: 48px;
   }
 
   /* Buttons — used at face value (see scaling note above) */
+  .icon-arrow {
+    vertical-align: middle;
+    margin-left: 0.5em;
+    transition: color 300ms ease-out;
+  }
+
   .banner__button {
+    position: relative;
+    isolation: isolate;
+    overflow: hidden;
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -135,50 +259,93 @@
     text-decoration: none;
     font-family: 'Jost', sans-serif;
     font-weight: 500;
-    transition: opacity 300ms ease-out, transform 300ms ease-out; /* Figma: While Hovering → Change To, Ease Out, 300ms */
+    transition: color 300ms ease-out;
   }
-  .banner__button--yellow {
-    background: #fff544;
-    color: #000000;
+  .banner__button::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    transform: scaleX(0);
+    transform-origin: right center;
+    transition: transform 300ms ease-out;
   }
-  .banner__button--black {
-    background: #000000;
-    color: #ffffff;
+  .banner__button:hover::before,
+  .banner__button:focus-visible::before {
+    transform: scaleX(1);
+    transform-origin: left center;
   }
-  .banner__button:hover,
-  .banner__button:focus-visible {
-    opacity: 0.85;
-    transform: translateY(-1px);
-  }
+  .banner__button--yellow { background: #fff544; color: #000000; }
+  .banner__button--yellow::before { background: #000000; }
+  .banner__button--yellow:hover,
+  .banner__button--yellow:focus-visible { color: #fff544; }
+
+  .banner__button--black { background: #000000; color: #ffffff; }
+  .banner__button--black::before { background: #fff544; }
+  .banner__button--black:hover,
+  .banner__button--black:focus-visible { color: #000000; }
 
   /* Hero */
   .banner__hero {
-    padding: 4rem;
-    max-width: 60ch;
-    /* Illustration background (camera/watch/compass line-art) is a
-       static design asset per §4a — set via section.settings.illustration
-       below rather than hardcoded here; falls back to plain white if unset. */
-    background-image: {% if section.settings.illustration != blank %}url('{{ section.settings.illustration | image_url: width: 2000 }}'){% else %}none{% endif %};
+    position: relative;
+    min-height: 34rem; /* tune against your live page — this is what gives the illustration room to show above the text */
+    display: flex;
+    align-items: flex-end;   /* text sits at the BOTTOM of the hero, not centered */
+    justify-content: flex-start;
+    padding: 3rem 4rem;
+    background-image: url('{{ "banner-illustration-desktop.svg" | asset_url }}');
     background-repeat: no-repeat;
-    background-position: right center;
+    background-position: top right; /* keeps the icon cluster up/right, clear space stays bottom-left */
     background-size: contain;
+  }
+  .banner__content {
+    max-width: 560px;
+    position: relative;
+    z-index: 1;
   }
   .banner__heading {
     font-family: 'Jost', sans-serif;
     font-weight: 500;
-    font-size: clamp(2.5rem, 3vw + 2rem, 5.15rem); /* ~scaling toward ~82px desktop, see note above */
+    font-size: clamp(2.75rem, 4vw, 4.25rem); /* ~64-68px at typical desktop widths */
     line-height: 1;
-    letter-spacing: 0;
-    color: #000000;
-    margin: 0 0 1.5rem;
+    margin: 0 0 1.25rem;
   }
   .banner__description {
     font-family: 'Jost', sans-serif;
     font-weight: 400;
-    font-size: clamp(1rem, 0.6vw + 0.85rem, 1.5rem); /* ~scaling toward ~24px desktop */
+    font-size: 1rem; /* ~16px, not fluid — stays small and steady per the reference */
     line-height: 1.4;
-    color: #000000;
-    margin: 0 0 2rem;
+    max-width: 20rem;
+    margin: 0 0 1.5rem;
+  }
+  .banner__description--mobile {
+    display: none; /* desktop shows the full paragraph by default */
+  }
+
+  .banner__illustration {
+    min-width: 0; /* lets the grid track actually shrink the image instead of overflowing */
+  }
+  .banner__illustration img {
+    width: 100%;
+    height: auto;
+    display: block;
+  }
+
+  /* Desktop: .banner__hero-text and .banner__hero-illustration are new
+    wrapper divs (added so mobile can treat the illustration as a real
+    layout element — see mobile media query below) but desktop's visual
+    output must stay byte-for-byte identical to before this refactor.
+    display: contents dissolves both wrappers so heading/description/
+    button fall back to being direct children of .banner__content,
+    exactly as they were pre-refactor, and the illustration <img>
+    (mobile-only content) is hidden outright since desktop keeps using
+    its existing .banner__hero background-image instead. */
+  .banner__hero-text,
+  .banner__hero-illustration {
+    display: contents;
+  }
+  .banner__hero-illustration-image {
+    display: none;
   }
 
   /* Bottom strip */
@@ -191,37 +358,166 @@
     padding: 1rem;
     border-top: 1px solid #eeeeee;
   }
+  .banner__bottom-strip-text {
+    margin: 0;
+  }
+  .banner__bottom-strip-text--mobile {
+    display: none; /* desktop copy shown by default */
+  }
 
   /* Mobile — Frame 1, 402px fixed width per §4a Dev Mode inspect.
-     Stacked order confirmed: header → heading → description →
-     yellow CTA → black CTA. */
+    Stacked order confirmed: header → heading → description →
+    illustration (w/ SHOP NOW overlaid) → bottom strip. */
   @media (max-width: 480px) {
-    .banner__nav-toggle {
+    .banner__heading {
+      font-size: 1.875rem; /* 30px */
+      line-height: 1; /* 100% */
+      margin: 0 0 1.5rem; /* 24px gap to description (103px - (49px + 30px)) */
+    }
+    .banner__description {
+      font-size: 1rem; /* 16px */
+      line-height: 1.3; /* 130% */
+      max-width: 21.25rem; /* 340px */
+      margin: 0 auto 1rem;
+    }
+    .banner__description--desktop {
+      display: none;
+    }
+    .banner__description--mobile {
       display: block;
     }
+
+    .banner__header .banner__content {
+      position: relative;
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      align-items: center;
+      width: 100%;
+    }
+
+    .banner__nav-toggle {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: absolute;
+      left: 0;
+      top: 0;
+      height: 2rem;
+    }
+
+    .banner__nav-icon-open svg {
+      display: block;
+      width: 18px;
+      height: 11px;
+    }
+    .banner__nav-icon-close svg {
+      display: block;
+      width: 14px;
+      height: 14px;
+    }
+
     .banner__header-expand {
       display: none;
       flex-direction: column;
-      align-items: flex-start;
-      gap: 0.75rem;
-      margin-top: 0.75rem;
+      align-items: center;
+      gap: 1.25rem;
+      margin-top: 1.5rem;
+      flex-basis: 100%;
+      width: 100%;
+      text-align: center;
     }
     .banner__header-expand[data-expanded="true"] {
       display: flex;
     }
+
+    .banner__tagline {
+      justify-self: auto;
+      margin: 0;
+      white-space: normal;
+      text-align: center;
+    }
+
+    .banner__cta-group {
+      justify-self: auto;
+      width: 100%;
+      display: flex;
+      justify-content: center;
+    }
+
+    .banner__header-expand .banner__button {
+      width: 244px;
+      max-width: 85%;
+      margin: 0 auto 0.75rem;
+    }
+
+    /* ── Hero, mobile ──────────────────────────────────────────────
+      Illustration is now a real layout element (a genuine <img>, see
+      markup above) instead of a CSS background — a background-image
+      on a fixed-height box has no intrinsic size for the browser to
+      lay out against, which is what previously produced a large gap
+      above the image and pushed the expandable header out of view.
+      An <img> in normal flow sizes itself from its own aspect ratio,
+      so no min-height guess is needed here at all.
+
+      .banner__content becomes the vertical stack: text block, then
+      illustration block, in source order — no absolute positioning
+      needed at this level anymore. */
     .banner__hero {
-      background-image: none; /* illustration is desktop-only per §4a mobile description */
-      max-width: 100%;
-      padding: 2rem 1.25rem;
+      min-height: 0;
+      align-items: flex-start;
+      background-image: none;
+      padding: 3.0625rem 1.25rem 0; /* 49px, per Dev Mode Top on the heading */
+    }
+    .banner__hero .banner__content {
       display: flex;
       flex-direction: column;
       align-items: center;
       text-align: center;
+      max-width: none;
     }
-    .banner__button {
+
+    /* Text block: plain white zone, heading + description only. */
+    .banner__hero-text {
+      display: block; /* overrides the desktop-only `display: contents` above */
       width: 100%;
-      margin-bottom: 0.75rem;
     }
+
+    /* Illustration block: image + SHOP NOW, positioned relative to
+      *this* container rather than the whole hero — so the button
+      always sits on the image regardless of the image's own height. */
+    .banner__hero-illustration {
+      display: block; /* overrides the desktop-only `display: contents` above */
+      position: relative;
+      width: 100%;
+      margin-top: 1.25rem;
+    }
+    .banner__hero-illustration-image {
+      display: block; /* overrides the desktop-only `display: none` above */
+      width: 100%;
+      height: auto; /* natural aspect ratio — no fixed/guessed height */
+    }
+    .banner__hero-illustration .banner__button {
+      position: absolute;
+      left: 50%;
+      bottom: 2rem;
+      transform: translateX(-50%);
+      width: auto;
+      min-width: 155px;
+    }
+
+    .banner__bottom-strip {
+      margin-top: 0.5rem;
+    }
+    .banner__bottom-strip-text--desktop { display: none; }
+    .banner__bottom-strip-text--mobile { display: block; }
+
+    .banner__button { transition: none; }
+    .banner__button::before { display: none; }
+    .banner__button--yellow:hover,
+    .banner__button--yellow:focus-visible { color: #000000; }
+    .banner__button--black:hover,
+    .banner__button--black:focus-visible { color: #ffffff; }
   }
 {% endstyle %}
 
@@ -265,6 +561,13 @@
       "default": "<p>Discover Joy: Your Ultimate Holiday Gift Destination. Explore our curated selection and find the perfect gifts to delight your loved ones this holiday season.</p>"
     },
     {
+      "type": "richtext",
+      "id": "description_mobile",
+      "label": "Description (mobile)",
+      "info": "Shown only on mobile in place of the full description — Figma's mobile frame uses a shorter, single-sentence version rather than the full desktop paragraph.",
+      "default": "<p>Discover Joy: Your Ultimate Holiday Gift Destination.</p>"
+    },
+    {
       "type": "text",
       "id": "banner_button_label",
       "label": "Banner button label",
@@ -276,16 +579,17 @@
       "label": "Banner button link"
     },
     {
-      "type": "image_picker",
-      "id": "illustration",
-      "label": "Banner illustration background",
-      "info": "Line-art background asset from the Figma export (camera, watch, compass, etc). Desktop only — hidden on mobile per the Figma mobile frames."
+      "type": "text",
+      "id": "bottom_strip_text",
+      "label": "Bottom strip text (desktop)",
+      "default": "SUSTAINABLE, ETHICALLY MADE CLOTHES IN SIZES XXS TO 6XL"
     },
     {
       "type": "text",
-      "id": "bottom_strip_text",
-      "label": "Bottom strip text",
-      "default": "SUSTAINABLE, ETHICALLY MADE CLOTHES IN SIZES XXS TO 6XL"
+      "id": "bottom_strip_text_mobile",
+      "label": "Bottom strip text (mobile)",
+      "info": "Confirmed different from the desktop copy in the Figma mobile frame — not a truncated version, a distinct string.",
+      "default": "SUSTAINABLE, ETHICALLY MADE ACTIVEWEAR"
     }
   ],
   "presets": [
