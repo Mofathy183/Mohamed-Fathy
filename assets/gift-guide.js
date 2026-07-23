@@ -7,7 +7,11 @@
  *
  * Currently implemented:
  *  - initMobileHeaderToggle()  → Phase 1, banner.liquid's hamburger/X
- *  - initPopups()              → Phase 3, product-popup open/close
+ *  - initPopups()              → Phase 3, product-popup open/close.
+ *    Popups are image-anchored (absolute, inside each tile's own
+ *    .product-grid__image-wrap) rather than a fixed full-screen
+ *    modal — see the comment above initPopups() for what that
+ *    changes about outside-click handling and scroll locking.
  *
  * Stubbed for later phases (left as named, empty-bodied functions so
  * the file's shape is stable and reviewable early — filled in during
@@ -49,10 +53,20 @@ function initMobileHeaderToggle() {
 }
 
 /**
- * Phase 3: open/close wiring for snippets/product-popup.liquid,
- * triggered by each grid tile's [data-popup-target] marker. Closes
- * on backdrop click, the "X" button, or Escape. Only ever one popup
- * open at a time.
+ * Phase 3: open/close wiring for snippets/product-popup.liquid.
+ *
+ * ARCHITECTURE NOTE (image-anchored, not a viewport modal):
+ * Each popup lives inside its own tile's .product-grid__image-wrap —
+ * there is no shared backdrop element and nothing is appended to
+ * <body>, so this file never scroll-locks the page the way a true
+ * modal would. "Outside click" is therefore determined per-popup: a
+ * click closes an open popup only if it landed outside that popup's
+ * own .product-grid__image-wrap (i.e. outside both the popup and its
+ * tile's image/hotspot), not just outside the popup element itself.
+ *
+ * Still only one popup open at a time: opening a new one closes any
+ * other that's currently open, since Figma shows a single popup
+ * state, not several stacked at once.
  */
 function initPopups() {
     document
@@ -73,6 +87,21 @@ function initPopups() {
         });
     });
 
+    // Outside click: scoped to each popup's own image wrapper, since
+    // there's no global backdrop to catch this for us anymore.
+    document.addEventListener("click", function (event) {
+        var openPopupEl = document.querySelector(
+            "[data-product-popup]:not([hidden])",
+        );
+        if (!(openPopupEl instanceof HTMLElement)) return;
+
+        var ownWrap = openPopupEl.closest(".product-grid__image-wrap");
+        if (!(event.target instanceof Node)) return;
+        if (ownWrap && ownWrap.contains(event.target)) return; // click was on this popup or its own tile's image/hotspot
+
+        closePopup(openPopupEl);
+    });
+
     document.addEventListener("keydown", function (event) {
         if (event.key !== "Escape") return;
         var openPopupEl = document.querySelector(
@@ -86,8 +115,15 @@ function initPopups() {
  * @param {HTMLElement} popup
  */
 function openPopup(popup) {
+    // Enforce "only one open at a time" — close any other open popup
+    // before revealing this one.
+    document
+        .querySelectorAll("[data-product-popup]:not([hidden])")
+        .forEach(function (otherPopup) {
+            if (otherPopup !== popup) closePopup(otherPopup);
+        });
+
     popup.hidden = false;
-    document.body.style.overflow = "hidden";
     var closeBtn = popup.querySelector(".product-popup__close");
     if (closeBtn instanceof HTMLElement) closeBtn.focus();
 }
@@ -97,7 +133,6 @@ function openPopup(popup) {
  */
 function closePopup(popup) {
     popup.hidden = true;
-    document.body.style.overflow = "";
 }
 
 /**
