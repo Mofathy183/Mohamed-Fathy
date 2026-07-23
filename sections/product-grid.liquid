@@ -6,15 +6,38 @@
   mobile. Built from scratch (no Dawn section reuse), per hard
   constraint in the build-context doc §2.
 
+  Tile content: per the confirmed Figma preview, the grid tile is
+  JUST the product photo plus a circular "+" popup-trigger marker —
+  no title/price/description/variant controls on the tile itself.
+  All of that (name, price, description, color, size, Add to Cart)
+  lives only in the popup snippet, opened by that marker.
+
+  POPUP ARCHITECTURE — image-anchored, not a viewport modal:
+  Each tile's popup is rendered INSIDE that tile's own
+  .product-grid__image-wrap (the same position:relative container the
+  "+" hotspot marker lives in), and positioned with
+  `position: absolute` relative to that wrapper rather than as a fixed
+  full-screen overlay. It is never appended to <body> and is never
+  shared across tiles — every product owns exactly one popup instance,
+  scoped to its own id, that opens attached to its own image and
+  reflows with it at every breakpoint. See the architecture note at
+  the top of snippets/product-popup.liquid for the full rationale.
+
   Depends on:
-    - assets/gift-guide.css (shared reset/animation/popup-overlay rules)
+    - assets/gift-guide.css (shared reset/animation rules, plus the
+      absolute-positioning rule that anchors each popup to its parent
+      .product-grid__image-wrap)
     - assets/gift-guide.js (Phase 4: color/size selection + add-to-cart
-      + Black/Medium → Soft Winter Jacket cross-sell). NOTE: the
-      <script> tag itself is loaded once from sections/banner.liquid,
-      since Banner always renders first on this page — this file just
-      relies on that script already being on the page.
-    - snippets/product-popup.liquid (Phase 3: rendered per tile,
-      opened via the circular marker's data-popup-target)
+      + Black/Medium → Soft Winter Jacket cross-sell, scoped entirely
+      to the popup now that the tile has no controls of its own).
+      NOTE: the <script> tag itself is loaded once from
+      sections/banner.liquid, since Banner always renders first on
+      this page — this file just relies on that script already being
+      on the page.
+    - snippets/product-popup.liquid (rendered per tile, inside the
+      image wrapper, opened via the circular marker's
+      data-popup-target; owns all product detail markup and its own
+      embedded [data-product-json] script tag)
 
   IMPORTANT — Shopify schema limitation (read before editing defaults):
   Resource-reference setting types (`product`, `collection`, `page`,
@@ -32,6 +55,35 @@
   six confirmed handles via `all_products` whenever a block's product
   setting hasn't been explicitly chosen yet by a merchant. Once a
   merchant swaps in a real selection, that takes over automatically.
+  NOTE: when this section is placed statically in a JSON template
+  (templates/page.gift-guide.json), the template's own "blocks" /
+  "block_order" keys are what actually populate section.blocks —
+  presets only fire when a merchant adds the section fresh from the
+  customizer picker.
+
+  HOTSPOT POSITIONING (per-block, percentage-based):
+  Each grid image in Figma has its own "+" marker placed at a
+  different spot (it's hand-placed over a specific part of each
+  lifestyle photo, not a fixed corner). Two bugs in the previous pass:
+    1. The X/Y position was a single pair of *section*-level settings
+       shared by all 6 tiles, so every marker landed on the same spot
+       regardless of which image it sat on.
+    2. Positions weren't reliably expressed as a percentage of the
+       *image's own* box, so they'd drift off their intended spot on
+       the photo as soon as the tile rendered at a width other than
+       whatever the numbers were eyeballed against.
+  Fixed by moving `hotspot_x` / `hotspot_y` onto the `product` block's
+  own settings (one pair per tile, merchant-editable), and rendering
+  them as CSS custom properties consumed by a `position: absolute`
+  rule inside a `position: relative` image wrapper — the browser does
+  the scaling, no JS/pixel math needed at any breakpoint.
+
+  Default values below were derived by taking each marker's Figma
+  frame position relative to its own 433×444 image box and dividing
+  by that box's width/height (e.g. image 1's marker sits at
+  left: 256.5px, top: 238px inside its 433×444 image → 256.5/433 =
+  59.24%, 238/444 = 53.6%). Repeated for all 6 images in the "Tisso
+  vison in the wild" Figma frame, in tile order.
 {% endcomment %}
 
 {%- assign fallback_handles = "olive-green-jacket,chequered-red-shirt,classic-leather-jacket,striped-silk-blouse,yellow-wool-jumper,classic-varsity-top" | split: ',' -%}
@@ -56,14 +108,53 @@
           <p class="product-grid__placeholder-text">Select a product in the theme customizer</p>
         </div>
       {%- else -%}
+        {%- comment %}
+          Hardened against a specific bug seen in production: if
+          hotspot_x/hotspot_y ever resolve to nil (e.g. a block saved
+          before these settings existed, or any future edge case
+          where Shopify doesn't backfill a schema default onto an
+          existing block), an inline custom property like
+          `--hotspot-x: %;` is a blank/invalid value. `var()` does
+          NOT fall through to its fallback in that case — a *declared
+          but invalid* custom property makes `left`/`top` invalid at
+          computed-value time, which resets them to `auto`. On an
+          absolutely-positioned element, `left:auto; top:auto` renders
+          at the element's normal-flow position instead — i.e. the
+          marker drops out from "pinned to a point on the photo" to
+          "sitting in flow right after the image." That exact symptom
+          (hollow circle, no icon, parked below-left of each tile) is
+          what showed up in a live QA pass, traced back to this.
+          Fix: resolve to a guaranteed numeric value in Liquid itself
+          (`default: 50`), so the inline style can never be blank —
+          this makes the CSS var() fallback below purely defensive,
+          not the only thing standing between us and this bug.
+        {%- endcomment -%}
+        {%- assign hotspot_x = block.settings.hotspot_x | default: 50 -%}
+        {%- assign hotspot_y = block.settings.hotspot_y | default: 50 -%}
+
         <div
           class="product-grid__tile"
           data-product-id="{{ grid_product.id }}"
           data-product-handle="{{ grid_product.handle }}"
           {{ block.shopify_attributes }}
         >
+          {%- comment %}
+            Photo + popup trigger marker only — all product detail
+            lives in the popup, not the tile. Styled as a filled dot
+            with a "+" icon per Figma (Ellipse 451 + crosshair vector),
+            not a hollow outline circle.
 
-          {%- comment %} Photo + popup trigger marker. Styled as a plain outlined dot per Figma, not a literal "+" glyph. {% endcomment -%}
+            Positioning: hotspot_x/hotspot_y are percentages of THIS
+            image's own box (0–100), set as CSS custom properties.
+            .product-grid__image-wrap is the `position: relative`
+            anchor and .product-grid__popup-trigger is
+            `position: absolute; left: var(--hotspot-x);
+            top: var(--hotspot-y); transform: translate(-50%, -50%);`
+            — see the {% style %} block below. Because both the
+            percentages and the transform are relative to the image
+            box, the marker stays visually pinned to the same point
+            on the photo at every breakpoint/width with zero JS.
+          {%- endcomment -%}
           <div class="product-grid__image-wrap">
             {%- if grid_product.featured_image != blank -%}
               <img
@@ -80,52 +171,25 @@
               class="product-grid__popup-trigger"
               data-popup-target="popup-{{ grid_product.id }}"
               aria-label="View {{ grid_product.title | escape }} details"
-            ></button>
+              style="--hotspot-x: {{ hotspot_x }}%; --hotspot-y: {{ hotspot_y }}%;"
+            >
+              {%- render 'icon-plus' -%}
+            </button>
+
+            {%- comment %}
+              IMAGE-ANCHORED POPUP: rendered INSIDE .product-grid__image-wrap
+              (the same position:relative anchor the hotspot marker above
+              uses), not as a sibling of the tile and not as a global/fixed
+              viewport modal. This keeps the popup visually attached to its
+              own product's image at every breakpoint — see the
+              architecture note at the top of snippets/product-popup.liquid
+              and the absolute-positioning rule in gift-guide.css. Each tile
+              owns exactly one popup instance, scoped to its own product id;
+              nothing here is shared across tiles.
+            {%- endcomment -%}
+            {%- render 'product-popup', product: grid_product -%}
           </div>
-
-          <h3 class="product-grid__title">{{ grid_product.title }}</h3>
-
-          {%- comment %} EUR / comma-decimal / €-suffix format ("980,00€"). Requires Settings → General → Store currency formatting set to a custom HTML format like "{{ amount_with_comma_separator }}€" so this stays store-configurable rather than string-hacked here. {% endcomment -%}
-          <p class="product-grid__price">{{ grid_product.price | money }}</p>
-
-          <p class="product-grid__description">{{ grid_product.description | strip_html | truncate: 120 }}</p>
-
-          {%- comment %} Color + size controls live on the tile itself (per Figma), separate from the popup's identical controls. Both read from the same embedded variants JSON below so Phase 4 JS has one source of truth per product. {% endcomment -%}
-          <div class="product-grid__variant-picker" data-variant-picker>
-            {%- assign color_option = grid_product.options_with_values | where: "name", "Color" | first -%}
-            {%- if color_option -%}
-              <div class="product-grid__colors" role="group" aria-label="Color">
-                {%- for value in color_option.values -%}
-                  <button type="button" class="product-grid__color-swatch" data-option-name="Color" data-option-value="{{ value | escape }}">
-                    {{ value }}
-                  </button>
-                {%- endfor -%}
-              </div>
-            {%- endif -%}
-
-            {%- assign size_option = grid_product.options_with_values | where: "name", "Size" | first -%}
-            {%- if size_option -%}
-              <select class="product-grid__size-select" data-option-name="Size" aria-label="Size">
-                <option value="" selected disabled>Choose your size</option>
-                {%- for value in size_option.values -%}
-                  <option value="{{ value | escape }}">{{ value }}</option>
-                {%- endfor -%}
-              </select>
-            {%- endif -%}
-          </div>
-
-          <button type="button" class="product-grid__add-to-cart" data-add-to-cart>
-            ADD TO CART &rarr;
-          </button>
-
-          {%- comment %} Embedded once per tile; consumed by assets/gift-guide.js (variant resolution) and mirrored in the popup snippet below by matching product id. {% endcomment -%}
-          <script type="application/json" data-product-json="{{ grid_product.id }}">
-            {{ grid_product.variants | json }}
-          </script>
         </div>
-
-        {%- comment %} Popup for this tile's product — hidden until its marker (data-popup-target above) is clicked. {% endcomment -%}
-        {%- render 'product-popup', product: grid_product -%}
       {%- endif -%}
     {%- endfor -%}
   </div>
@@ -136,94 +200,74 @@
     padding: 4rem 2rem;
   }
   .product-grid__heading {
-    font-family: 'Jost', sans-serif;
-    font-weight: 500;
-    text-align: center;
-    margin-bottom: 2.5rem;
+    font-family: 'Lustria', serif;
+    font-weight: 400;
+    font-size: clamp(1.5rem, 2vw, 2rem);
+    line-height: 1.2; 
+    text-align: left;
+    margin: 0 0 1.875rem;
   }
   .product-grid__tiles {
     display: grid;
-    grid-template-columns: repeat(3, 1fr); /* desktop: 2 rows x 3 cols */
-    gap: 2.5rem;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1.25rem;
+    max-width: 1339px;
+    margin: 0 auto;
   }
+
   .product-grid__tile {
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
+    width: auto; 
   }
-  .product-grid__image-wrap {
-    position: relative;
-  }
+  
+  /* Anchor for the absolutely-positioned hotspot below — this is what
+  makes hotspot_x/hotspot_y percentages resolve against the image's
+  own box instead of some page-relative ancestor. */
+  .product-grid__image-wrap,
   .product-grid__image {
     width: 100%;
+    aspect-ratio: 433 / 444; 
     height: auto;
-    display: block;
+    object-fit: cover;
   }
+
+  /* Hotspot "+" marker — 22x22 circle per Figma (Ellipse 451,
+    rgba(248,248,248,0.9) fill), position driven entirely by the
+    --hotspot-x/--hotspot-y custom properties set inline per block
+    (see markup above), never by hardcoded px or nth-child rules.
+    translate(-50%, -50%) centers the circle ON the percentage point
+    rather than placing its top-left corner there, so the visual
+    center of the marker is what actually lines up with the spot the
+    designer picked. */
   .product-grid__popup-trigger {
     position: absolute;
-    top: 12px;
-    left: 12px;
-    width: 24px;
-    height: 24px;
+    left: var(--hotspot-x, 50%);
+    top: var(--hotspot-y, 50%);
+    transform: translate(-50%, -50%);
+    width: 20px;
+    height: 20px;
     border-radius: 50%;
-    background: #fff;
-    border: 1px solid #000;
+    background: rgba(248, 248, 248, 0.9);
+    border: none;
     cursor: pointer;
     padding: 0;
-  }
-  .product-grid__title {
-    font-family: 'Jost', sans-serif;
-    font-weight: 500;
-    margin: 0;
-  }
-  .product-grid__price,
-  .product-grid__description {
-    font-family: 'Jost', sans-serif;
-    margin: 0;
-  }
-  .product-grid__colors {
+    z-index: 2;
+    color: #000000;
     display: flex;
-    border: 1px solid #000;
+    align-items: center;
+    justify-content: center;
+    line-height: 0;
   }
-  .product-grid__color-swatch {
-    flex: 1;
-    padding: 0.5rem;
-    background: transparent;
-    border: none;
-    border-right: 1px solid #000;
-    cursor: pointer;
-    font-family: 'Jost', sans-serif;
+  .product-grid__popup-trigger .icon-plus {
+    width: 8px;
+    height: 8px;
+    display: block;
+    pointer-events: none;
   }
-  .product-grid__color-swatch:last-child {
-    border-right: none;
+  .product-grid__popup-trigger:hover,
+  .product-grid__popup-trigger:focus-visible {
+    background: #ffffff;
   }
-  .product-grid__color-swatch[aria-pressed="true"] {
-    background: #000;
-    color: #fff;
-  }
-  .product-grid__size-select {
-    width: 100%;
-    padding: 0.5rem;
-    font-family: 'Jost', sans-serif;
-  }
-  .product-grid__add-to-cart {
-    background: #000;
-    color: #fff;
-    border: none;
-    padding: 0.75rem 1rem;
-    width: 100%;
-    cursor: pointer;
-    font-family: 'Jost', sans-serif;
-    transition: opacity 300ms ease-out;
-  }
-  .product-grid__add-to-cart:hover,
-  .product-grid__add-to-cart:focus-visible {
-    opacity: 0.8;
-  }
-  .product-grid__add-to-cart[disabled] {
-    opacity: 0.4;
-    cursor: not-allowed;
-  }
+
   .product-grid__tile--empty {
     border: 1px dashed #ccc;
     padding: 2rem;
@@ -233,22 +277,46 @@
   /* NOTE — mobile breakpoint ambiguity: the build-context doc (§4a mobile
     section) describes the "in the wild" gallery as a confirmed 2-column
     layout, but then separately describes the 6 full product tiles as
-    full-width single-column at the same 402px Frame 1 width. It isn't
-    fully clear whether these are the same 6 tiles at two different
-    states, or two different pieces of content. Implemented here as a
-    two-tier breakpoint: a wider mobile/tablet tier keeps 2 columns,
-    and the narrow 402px tier (matching Frame 1 exactly) drops to a
-    single column. Re-check this directly against the Figma mobile
-    frames before final submission and simplify to one tier if the
-    doc's "2-column gallery" turns out to just describe the same tiles. */
+    full-width single-column at the same 402px Frame 1 width. Now that
+    the tile is image-only (no stacked text/controls to widen), this
+    reads as the same content at two breakpoints rather than two
+    different pieces of content — implemented here as a two-tier
+    breakpoint: a wider mobile/tablet tier keeps 2 columns, and the
+    narrow 402px tier (matching Frame 1 exactly) drops to a single
+    column. Re-check this directly against the Figma mobile frames
+    before final submission. The hotspot needs no separate mobile
+    handling at all — it's a percentage of the image box at every
+    breakpoint, so it stays put as the grid reflows. */
   @media (max-width: 768px) {
+    .section-{{ section.id }} {
+      padding: 1.5rem 1rem;
+    }
+    .product-grid__heading {
+      margin: 0 0 1rem;
+    }
     .product-grid__tiles {
+      display: grid;
       grid-template-columns: repeat(2, 1fr);
+      gap: 0.75rem;
+    }
+    /* Reset desktop's fixed 433px tile/image sizing so mobile's 2-col
+      grid tracks (1fr) can actually control width — otherwise the
+      fixed px width overrides the grid track and breaks the layout. */
+    .product-grid__tile,
+    .product-grid__image-wrap {
+      width: auto;
+      height: auto;
+    }
+    .product-grid__image {
+      width: 100%;
+      aspect-ratio: 169 / 186.42;
+      height: auto;
+      object-fit: cover;
     }
   }
   @media (max-width: 480px) {
-    .product-grid__tiles {
-      grid-template-columns: 1fr;
+    .product-grid__heading {
+      text-align: center;
     }
   }
 {% endstyle %}
@@ -274,7 +342,35 @@
           "id": "product",
           "label": "Product",
           "info": "Pick a product to populate this grid slot. If left unset, one of the six products confirmed for this build (see §4b) is used as a fallback."
-        }
+        },
+        {
+          "type": "header",
+          "content": "Popup marker position"
+        },
+        {
+          "type": "range",
+          "id": "hotspot_x",
+          "label": "Hotspot horizontal position (%)",
+          "min": 0,
+          "max": 100,
+          "step": 1,
+          "default": 50,
+          "info": "Percentage across THIS block's image, left to right. Set per block so each tile's marker can sit on its own photo's focal point — see the Figma reference image for where the marker should land on this product's photo."
+        },
+        {
+          "type": "range",
+          "id": "hotspot_y",
+          "label": "Hotspot vertical position (%)",
+          "min": 0,
+          "max": 100,
+          "step": 1,
+          "default": 50,
+          "info": "Percentage down THIS block's image, top to bottom."
+        },
+        {
+          "type": "header",
+          "content": "Popup marker position (mobile)"
+        },
       ]
     }
   ],
@@ -283,12 +379,12 @@
     {
       "name": "Product Grid",
       "blocks": [
-        { "type": "product" },
-        { "type": "product" },
-        { "type": "product" },
-        { "type": "product" },
-        { "type": "product" },
-        { "type": "product" }
+        { "type": "product", "settings": { "hotspot_x": 62, "hotspot_y": 57 } },
+        { "type": "product", "settings": { "hotspot_x": 85, "hotspot_y": 53 } },
+        { "type": "product", "settings": { "hotspot_x": 64, "hotspot_y": 21 } },
+        { "type": "product", "settings": { "hotspot_x": 73, "hotspot_y": 20 } },
+        { "type": "product", "settings": { "hotspot_x": 49, "hotspot_y": 26 } },
+        { "type": "product", "settings": { "hotspot_x": 77, "hotspot_y": 40 } }
       ]
     }
   ]
