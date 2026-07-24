@@ -1,54 +1,26 @@
 {% comment %}
   snippets/product-popup.liquid
   ------------------------------------------------------------------
-  Per-product popup panel. Rendered once per Grid tile, INSIDE that
-  tile's own .product-grid__image-wrap, from
-  sections/product-grid.liquid:
+  Per-product popup, rendered once per Grid tile:
     {% render 'product-popup', product: grid_product %}
 
-  ARCHITECTURE NOTE (image-anchored, not a viewport modal):
-  This is deliberately NOT a fixed full-screen modal with a backdrop.
-  Each popup is a direct child of its own product's image wrapper —
-  the same positioning container the tile's "+" hotspot lives in —
-  and is positioned with `position: absolute` relative to that
-  wrapper (see gift-guide.css). It opens attached to the image it
-  belongs to, not centered over the whole viewport, and it is never
-  appended to <body>. There is no shared/global popup: every tile
-  renders its own independent instance, scoped to its own product id.
+  ARCHITECTURE (updated): this is now a real centered MODAL — fixed
+  full-viewport overlay + dimmed backdrop + a centered panel — not an
+  image-anchored absolute box. Matches the Figma reference exactly:
+  photo+info sit side by side at the top, Color renders as a two-
+  segment toggle (not swatch chips), Size is a custom expand/collapse
+  dropdown (not a native <select>), then Add to Cart.
 
-  Hidden by default (the `hidden` attribute below); opened by its own
-  tile's circular marker via data-popup-target="popup-{{ product.id }}",
-  wired in assets/gift-guide.js → initPopups(). Close happens on the
-  "X" button, on an outside click, or Escape — all scoped to this
-  instance, never affecting another product's popup.
-
-  Layout confirmed against Figma reference screenshots: photo is
-  small/square and sits BESIDE name/price/description (not stacked
-  full-width above them) — see .product-popup__top below. Field
-  order: close (X, top-right) → [photo | name/price/description] row
-  → Color (two-way segmented toggle) → Size (custom dropdown, not a
-  native <select> — see .product-popup__size-dropdown) → Add to Cart.
-
-  Size dropdown uses a native <details>/<summary> element rather than
-  <select> so it can show its options as an in-place expanding list
-  (matching the reference) with zero JS required just to open/close —
-  the browser handles that natively. Each option is still tagged with
-  data-option-name/data-option-value so Phase 4's initVariantPickers()
-  can wire click-to-select the same way it already will for the Color
-  toggle; it should also update the summary's visible text and close
-  the <details> on selection.
+  Hidden by default (`hidden` attribute). Opened by its tile's
+  circular marker via data-popup-target="popup-{{ product.id }}".
+  Closed by ANY element carrying data-popup-close — that's both the
+  "X" button and the backdrop div, so clicking outside the card closes
+  it for free without extra outside-click JS.
 
   Depends on:
-    - assets/gift-guide.css → panel/toggle/dropdown styling, plus the
-      absolute-positioning rule that anchors this popup to its parent
-      .product-grid__image-wrap (popup can't use a {% style %} tag —
-      that tag is section/block-only, not available in snippets — so
-      all of this snippet's CSS lives in the shared stylesheet
-      instead).
-    - assets/gift-guide.js → initPopups() (open/close, scoped per
-      instance) and initVariantPickers()/addToCart() (Phase 4 — still
-      needs to wire selection state + summary text update for the new
-      dropdown).
+    - assets/gift-guide.css → modal/backdrop/panel/toggle/dropdown styling
+    - assets/gift-guide.js  → initPopups() (open/close) and
+      initVariantPickers() (Color toggle + Size dropdown behavior)
 {% endcomment %}
 
 {%- if product != blank -%}
@@ -57,16 +29,20 @@
     id="popup-{{ product.id }}"
     data-product-popup
     data-product-id="{{ product.id }}"
-    role="dialog"
-    aria-labelledby="PopupTitle-{{ product.id }}"
     hidden
   >
-    <div class="product-popup__panel">
+    <div class="product-popup__backdrop" data-popup-close></div>
+
+    <div
+      class="product-popup__panel"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="PopupTitle-{{ product.id }}"
+    >
       <button type="button" class="product-popup__close" data-popup-close aria-label="Close">
-        &times;
+        {% render 'icon-close_x' %}
       </button>
 
-      {%- comment %} Photo + name/price/description sit side by side — confirmed against the Figma reference, not stacked. {% endcomment -%}
       <div class="product-popup__top">
         {%- if product.featured_image != blank -%}
           <img
@@ -81,74 +57,155 @@
 
         <div class="product-popup__info">
           <h3 id="PopupTitle-{{ product.id }}" class="product-popup__title">{{ product.title }}</h3>
-
-          {%- comment %} Same EUR/comma-decimal/€-suffix note as product-grid.liquid — depends on Settings → General → currency formatting. {% endcomment -%}
           <p class="product-popup__price">{{ product.price | money }}</p>
-
           <p class="product-popup__description">{{ product.description | strip_html | truncate: 200 }}</p>
         </div>
       </div>
 
-      {%- comment %}
-        Same options_with_values-driven pattern as before — nothing
-        hardcoded, so this works for any product's real option values
-        (e.g. the seeded catalog's XS/S/M/L, not the Figma mock's
-        XS–XL/6XL example state — see build-context doc §4a's callout
-        on this).
-      {%- endcomment -%}
       <div class="product-popup__variant-picker" data-variant-picker>
+
+        {%- comment %}
+          ── Color: two-segment (or N-segment) toggle, driven by
+          options_with_values, nothing hardcoded ──
+
+          Nothing is pre-selected on open: every button below renders
+          aria-pressed="false", including the first one. The
+          `.product-popup__color-highlight` span is a single shared
+          element (not per-button background) that slides between
+          segments via a `transform`, driven by the --color-index
+          custom property gift-guide.js sets on click — that's what
+          makes picking a different color a smooth slide instead of
+          the fill disappearing on one button and reappearing on the
+          other. See gift-guide.css for the full rationale, including
+          why the left-edge swatch-color bar no longer gets covered by
+          the black fill when a segment is selected.
+        {%- endcomment -%}
         {%- assign popup_color_option = product.options_with_values | where: "name", "Color" | first -%}
         {%- if popup_color_option -%}
-          <p class="product-popup__label">Color</p>
-          <div class="product-popup__colors" role="group" aria-label="Color">
-            {%- for value in popup_color_option.values -%}
-              <button
-                type="button"
-                class="product-popup__color-swatch"
-                data-option-name="Color"
-                data-option-value="{{ value | escape }}"
-                aria-pressed="{% if forloop.first %}true{% else %}false{% endif %}"
-              >
-                {{ value }}
-              </button>
-            {%- endfor -%}
+          <div class="product-popup__variant-group">
+            <p class="product-popup__label">Color</p>
+            <div class="product-popup__colors" role="group" aria-label="Color">
+              <span class="product-popup__color-highlight" aria-hidden="true"></span>
+              {%- for value in popup_color_option.values -%}
+                {%- comment %}
+                  Prefer Shopify's native option-value swatch (admin-configured,
+                  Settings → Products → Option value swatches, or a linked
+                  shopify.color-pattern metaobject) — a real color the merchant
+                  set, not a guess. Falls back to the name-based hex map when no
+                  swatch exists, which is every value in this test's seeded CSV
+                  catalog (plain demo products, no swatches configured).
+                {% endcomment -%}
+                {%- if value.swatch.color -%}
+                  {%- assign swatch_hex = value.swatch.color -%}
+                {%- else -%}
+                  {%- assign color_key = value | handleize -%}
+                  {%- case color_key -%}
+                    {%- when 'black' -%}{%- assign swatch_hex = '#000000' -%}
+                    {%- when 'white' -%}{%- assign swatch_hex = '#ffffff' -%}
+                    {%- when 'blue' -%}{%- assign swatch_hex = '#0d499f' -%}
+                    {%- when 'red' -%}{%- assign swatch_hex = '#b20f36' -%}
+                    {%- when 'grey' or 'gray' -%}{%- assign swatch_hex = '#afafb7' -%}
+                    {%- when 'green' -%}{%- assign swatch_hex = '#4b6f44' -%}
+                    {%- when 'olive' -%}{%- assign swatch_hex = '#708238' -%}
+                    {%- when 'yellow' -%}{%- assign swatch_hex = '#fff544' -%}
+                    {%- when 'orange' -%}{%- assign swatch_hex = '#d2691e' -%}
+                    {%- when 'navy' -%}{%- assign swatch_hex = '#1a2b4a' -%}
+                    {%- when 'brown' -%}{%- assign swatch_hex = '#6b4423' -%}
+                    {%- when 'pink' -%}{%- assign swatch_hex = '#e88ca8' -%}
+                    {%- when 'purple' -%}{%- assign swatch_hex = '#6a3aa0' -%}
+                    {%- else -%}{%- assign swatch_hex = '#cccccc' -%}
+                  {%- endcase -%}
+                {%- endif -%}
+                <button
+                  type="button"
+                  class="product-popup__color-swatch"
+                  data-option-name="Color"
+                  data-option-value="{{ value | escape }}"
+                  aria-pressed="false"
+                  style="--swatch-color: {{ swatch_hex }};"
+                >
+                  {{ value }}
+                </button>
+              {%- endfor -%}
+            </div>
           </div>
         {%- endif -%}
 
+        {%- comment %}
+          ── Size: custom listbox (NOT a native <select>) ──
+
+          Rebuilt to match the full spec: a dedicated arrow zone on
+          the toggle (separated by its own vertical divider, not just
+          an icon floating in the padding), and — unlike the previous
+          pass — the selected row DOES stay highlighted black while
+          the list is open, exactly like the Color toggle's sliding
+          fill. `.product-popup__size-highlight` is one shared element
+          (not per-row background) positioned inside
+          `[data-size-options-wrap]` and moved with `transform:
+          translateY(...)` driven by the --size-index custom property
+          gift-guide.js sets on selection — that's what makes jumping
+          from row to row a smooth slide instead of a hard swap. Every
+          row shares one fixed --size-row-height (set on the wrap, so
+          both the highlight and the rows inherit the same value) so
+          the highlight always lines up exactly with the row it's
+          covering, whatever the row count.
+
+          Semantics: real listbox pattern (ul[role=listbox] > li[role=
+          option]), not buttons-styled-as-options — aria-selected
+          (not aria-pressed) marks the current row, and
+          gift-guide.js wires ArrowUp/ArrowDown/Enter/Escape so it
+          behaves like a native <select> for keyboard users.
+        {%- endcomment -%}
         {%- assign popup_size_option = product.options_with_values | where: "name", "Size" | first -%}
         {%- if popup_size_option -%}
-          <p class="product-popup__label">Size</p>
-          {%- comment %} Native disclosure widget: opens/closes with no JS. Phase 4 wires the actual selection (click an <li>, copy its text into the <summary>, set data-option-value on the wrapper, close the details). {% endcomment -%}
-          <details class="product-popup__size-dropdown" data-option-name="Size">
-            <summary class="product-popup__size-summary">
-              <span data-size-summary-text>Choose your size</span>
-              <span class="product-popup__chevron" aria-hidden="true"></span>
-            </summary>
-            <ul class="product-popup__size-options">
-              {%- for value in popup_size_option.values -%}
-                <li>
-                  <button type="button" class="product-popup__size-option" data-option-name="Size" data-option-value="{{ value | escape }}">
+          <div class="product-popup__variant-group">
+          <p class="product-popup__label" id="SizeLabel-{{ product.id }}">Size</p>
+          <div class="product-popup__size-dropdown" data-size-dropdown data-option-name="Size" data-expanded="false">
+            <button
+              type="button"
+              class="product-popup__size-toggle"
+              data-size-toggle
+              aria-haspopup="listbox"
+              aria-expanded="false"
+              aria-labelledby="SizeLabel-{{ product.id }} SizeToggleText-{{ product.id }}"
+            >
+              <span class="product-popup__size-toggle-text" id="SizeToggleText-{{ product.id }}" data-size-summary-text>Choose your size</span>
+              <span class="product-popup__size-arrow" aria-hidden="true">
+                {% render 'icon-chevron' %}
+              </span>
+            </button>
+            <div class="product-popup__size-options-wrap" data-size-options-wrap>
+              <span class="product-popup__size-highlight" aria-hidden="true"></span>
+              <ul
+                class="product-popup__size-options"
+                data-size-options
+                role="listbox"
+                aria-label="Size"
+              >
+                {%- for value in popup_size_option.values -%}
+                  <li
+                    class="product-popup__size-option"
+                    role="option"
+                    tabindex="-1"
+                    data-option-name="Size"
+                    data-option-value="{{ value | escape }}"
+                    data-size-index="{{ forloop.index0 }}"
+                    aria-selected="false"
+                  >
                     {{ value }}
-                  </button>
-                </li>
-              {%- endfor -%}
-            </ul>
-          </details>
+                  </li>
+                {%- endfor -%}
+              </ul>
+            </div>
+          </div>
+          </div>
         {%- endif -%}
       </div>
 
       <button type="button" class="product-popup__add-to-cart" data-add-to-cart disabled>
-        ADD TO CART &rarr;
+        ADD TO CART {%- render 'icon-arrow' -%}
       </button>
 
-      {%- comment %}
-        Same [data-product-json] pattern as the grid tile's own copy.
-        Both carry the same product id but live in different
-        containers (this panel vs. the tile), so Phase 4's JS always
-        scopes its lookup to the nearest ancestor with
-        [data-product-id] rather than doing a bare global attribute
-        match — the two never collide.
-      {%- endcomment -%}
       <script type="application/json" data-product-json="{{ product.id }}">
         {{ product.variants | json }}
       </script>
