@@ -1,38 +1,83 @@
+/*
+ * ------------------------------------------------------------
+ * IMPORTANT: The contents of this file are auto-generated.
+ *
+ * This file may be updated by the Shopify admin theme editor
+ * or related systems. Please exercise caution as any changes
+ * made to this file may be overwritten.
+ * ------------------------------------------------------------
+ */
 {
-    "sections": {
-        "banner": {
-            "type": "banner"
-        },
-        "product-grid": {
-            "type": "product-grid",
-            "blocks": {
-                "block-1": {
-                    "type": "product",
-                    "settings": { "product": "black-leather-bag", "hotspot_x": 62, "hotspot_y": 57  }
-                },
-                "block-2": {
-                    "type": "product",
-                    "settings": { "product": "blue-silk-tuxedo", "hotspot_x": 85, "hotspot_y": 53 }
-                },
-                "block-3": {
-                    "type": "product",
-                    "settings": { "product": "chequered-red-shirt", "hotspot_x": 64, "hotspot_y": 21 }
-                },
-                "block-4": {
-                    "type": "product",
-                    "settings": { "product": "classic-leather-jacket", "hotspot_x": 73, "hotspot_y": 20 }
-                },
-                "block-5": {
-                    "type": "product",
-                    "settings": { "product": "classic-varsity-top", "hotspot_x": 49, "hotspot_y": 26 }
-                },
-                "block-6": {
-                    "type": "product",
-                    "settings": { "product": "dark-denim-top", "hotspot_x": 77, "hotspot_y": 40 }
-                }
-            },
-            "block_order": ["block-1", "block-2", "block-3", "block-4", "block-5", "block-6"]
-        }
+  "sections": {
+    "banner": {
+      "type": "banner",
+      "settings": {}
     },
-    "order": ["banner", "product-grid"]
+    "product-grid": {
+      "type": "product-grid",
+      "blocks": {
+        "block-1": {
+          "type": "product",
+          "settings": {
+            "product": "black-leather-bag",
+            "hotspot_x": 62,
+            "hotspot_y": 57
+          }
+        },
+        "block-2": {
+          "type": "product",
+          "settings": {
+            "product": "blue-silk-tuxedo",
+            "hotspot_x": 85,
+            "hotspot_y": 53
+          }
+        },
+        "block-3": {
+          "type": "product",
+          "settings": {
+            "product": "chequered-red-shirt",
+            "hotspot_x": 64,
+            "hotspot_y": 21
+          }
+        },
+        "block-4": {
+          "type": "product",
+          "settings": {
+            "product": "classic-leather-jacket",
+            "hotspot_x": 73,
+            "hotspot_y": 20
+          }
+        },
+        "block-5": {
+          "type": "product",
+          "settings": {
+            "product": "classic-varsity-top",
+            "hotspot_x": 49,
+            "hotspot_y": 26
+          }
+        },
+        "block-6": {
+          "type": "product",
+          "settings": {
+            "product": "dark-denim-top",
+            "hotspot_x": 77,
+            "hotspot_y": 40
+          }
+        }
+      },
+      "block_order": [
+        "block-1",
+        "block-2",
+        "block-3",
+        "block-4",
+        "block-5",
+        "block-6"
+      ],
+      "settings": {}
+    }
+  },
+  "order": [
+    "banner",
+    "product-grid"
+  ]
 }
