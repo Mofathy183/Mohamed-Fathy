@@ -53,6 +53,13 @@ function initMobileHeaderToggle() {
 }
 
 /**
+ * Open/close wiring for the centered modal popup.
+ * Backdrop and the "X" both carry data-popup-close, so clicking
+ * either one closes the popup — no separate outside-click detection
+ * needed anymore now that it's a real fixed overlay.
+ */
+
+/**
  * Phase 3: open/close wiring for snippets/product-popup.liquid.
  *
  * ARCHITECTURE NOTE (image-anchored, not a viewport modal):
@@ -87,21 +94,6 @@ function initPopups() {
         });
     });
 
-    // Outside click: scoped to each popup's own image wrapper, since
-    // there's no global backdrop to catch this for us anymore.
-    document.addEventListener("click", function (event) {
-        var openPopupEl = document.querySelector(
-            "[data-product-popup]:not([hidden])",
-        );
-        if (!(openPopupEl instanceof HTMLElement)) return;
-
-        var ownWrap = openPopupEl.closest(".product-grid__image-wrap");
-        if (!(event.target instanceof Node)) return;
-        if (ownWrap && ownWrap.contains(event.target)) return; // click was on this popup or its own tile's image/hotspot
-
-        closePopup(openPopupEl);
-    });
-
     document.addEventListener("keydown", function (event) {
         if (event.key !== "Escape") return;
         var openPopupEl = document.querySelector(
@@ -111,37 +103,327 @@ function initPopups() {
     });
 }
 
-/**
- * @param {HTMLElement} popup
- */
+/** @param {HTMLElement} popup */
 function openPopup(popup) {
-    // Enforce "only one open at a time" — close any other open popup
-    // before revealing this one.
     document
         .querySelectorAll("[data-product-popup]:not([hidden])")
         .forEach(function (otherPopup) {
-            if (otherPopup !== popup) closePopup(otherPopup);
+            if (otherPopup instanceof HTMLElement && otherPopup !== popup) {
+                closePopup(otherPopup);
+            }
         });
-
     popup.hidden = false;
+    document.body.style.overflow = "hidden";
     var closeBtn = popup.querySelector(".product-popup__close");
     if (closeBtn instanceof HTMLElement) closeBtn.focus();
 }
 
-/**
- * @param {HTMLElement} popup
- */
+/** @param {HTMLElement} popup */
 function closePopup(popup) {
     popup.hidden = true;
+    document.body.style.overflow = "";
 }
 
 /**
- * Phase 4: color/size selection on both the grid tile and popup,
- * resolving the matching variant from each product's embedded
- * [data-product-json] script tag.
+ * Color toggle + Size dropdown behavior, scoped per popup instance
+ * via [data-variant-picker] so multiple tiles never cross-wire.
  */
 function initVariantPickers() {
-    // TODO (Phase 4)
+    document
+        .querySelectorAll("[data-variant-picker]")
+        .forEach(function (picker) {
+            // Color: click sets aria-pressed on the clicked one, clears
+            // siblings, and slides the shared highlight (see
+            // .product-popup__color-highlight in gift-guide.css) to that
+            // button's position via two CSS custom properties:
+            //   --color-count → how many segments to divide the track into
+            //   --color-index → which segment (0-based) to slide under
+            // --color-count is set once up front from the actual number of
+            // rendered swatches (not hardcoded to 2), so this still works
+            // correctly if a product ever has more than two color values.
+            var colorsWrapper = picker.querySelector(".product-popup__colors");
+            var colorButtons = picker.querySelectorAll(
+                ".product-popup__color-swatch",
+            );
+
+            if (colorsWrapper instanceof HTMLElement && colorButtons.length) {
+                colorsWrapper.style.setProperty(
+                    "--color-count",
+                    String(colorButtons.length),
+                );
+
+                colorButtons.forEach(function (btn, index) {
+                    btn.addEventListener("click", function () {
+                        colorButtons.forEach(function (b) {
+                            b.setAttribute("aria-pressed", String(b === btn));
+                        });
+
+                        // Nothing is selected until the first click (see
+                        // product-popup.liquid — every button starts
+                        // aria-pressed="false"); data-has-selection is what
+                        // fades the highlight in the first time, after which
+                        // only its position (--color-index) changes.
+                        colorsWrapper.style.setProperty(
+                            "--color-index",
+                            String(index),
+                        );
+                        colorsWrapper.setAttribute(
+                            "data-has-selection",
+                            "true",
+                        );
+
+                        maybeEnableAddToCart(picker);
+                    });
+                });
+            }
+
+            // Size: custom listbox — mirrors the Color toggle's sliding
+            // highlight (one shared element moved with --size-index),
+            // plus the open/close + keyboard behavior a native <select>
+            // gives for free (ArrowUp/Down to move, Enter to pick,
+            // Escape to close), since this list is real markup
+            // (ul[role=listbox] > li[role=option]) rather than a
+            // native form control.
+            var sizeDropdown = picker.querySelector("[data-size-dropdown]");
+            var sizeToggle = picker.querySelector("[data-size-toggle]");
+            var sizeOptionsWrap = picker.querySelector(
+                "[data-size-options-wrap]",
+            );
+            var sizeList = picker.querySelector("[data-size-options]");
+
+            if (
+                sizeDropdown instanceof HTMLElement &&
+                sizeToggle instanceof HTMLElement &&
+                sizeOptionsWrap instanceof HTMLElement &&
+                sizeList instanceof HTMLElement
+            ) {
+                const dropdown = sizeDropdown;
+                const toggle = sizeToggle;
+                const optionsWrap = sizeOptionsWrap;
+                const summaryText = picker.querySelector(
+                    "[data-size-summary-text]",
+                );
+                const placeholderText =
+                    summaryText instanceof HTMLElement
+                        ? summaryText.textContent
+                        : "";
+                const options = Array.prototype.slice.call(
+                    sizeList.querySelectorAll(".product-popup__size-option"),
+                );
+
+                function isSizeListOpen() {
+                    return dropdown.getAttribute("data-expanded") === "true";
+                }
+
+                // The options panel is `position: fixed` now (see
+                // gift-guide.css for why — decouples it from
+                // .product-popup__panel's own overflow-y so opening it
+                // can never force the panel itself to scroll). A fixed
+                // element can't be told "sit under the toggle" in CSS
+                // alone, so its on-screen position is measured here and
+                // written in as inline styles every time it opens, and
+                // kept in sync while open in case the popup panel itself
+                // scrolls or the window resizes underneath it.
+                function positionSizeOptions() {
+                    var rect = toggle.getBoundingClientRect();
+                    optionsWrap.style.top = rect.bottom + "px";
+                    optionsWrap.style.left = rect.left + "px";
+                    optionsWrap.style.width = rect.width + "px";
+                }
+
+                // Roving tabindex: exactly one option is ever in the Tab
+                // order (tabindex="0") — the one the shopper last landed
+                // on via click or arrow key — everything else is "-1".
+                // That's what lets ArrowUp/ArrowDown move focus between
+                // plain <li> options the way a native <select>'s list
+                // does, without every row being a separate Tab stop.
+                function setActiveOption(option) {
+                    options.forEach(function (o) {
+                        o.setAttribute("tabindex", o === option ? "0" : "-1");
+                    });
+                }
+
+                function openSizeList(focusOption) {
+                    positionSizeOptions();
+                    if (summaryText instanceof HTMLElement) {
+                        summaryText.textContent = placeholderText;
+                        summaryText.style.justifyContent = "left"
+                    }
+                    dropdown.setAttribute("data-expanded", "true");
+                    toggle.setAttribute("aria-expanded", "true");
+                    // Capture phase so this also fires for scroll events
+                    // on .product-popup__panel itself, which don't bubble
+                    // to window — capture-phase listeners still see them.
+                    window.addEventListener("resize", positionSizeOptions);
+                    window.addEventListener(
+                        "scroll",
+                        positionSizeOptions,
+                        true,
+                    );
+                    if (focusOption instanceof HTMLElement) {
+                        setActiveOption(focusOption);
+                        focusOption.focus();
+                    }
+                }
+
+                function closeSizeList(refocusToggle) {
+                    if (summaryText instanceof HTMLElement) {
+                        var selected = currentlySelectedOption();
+                        summaryText.textContent = selected
+                            ? selected.getAttribute("data-option-value") || placeholderText
+                            : placeholderText;
+                        summaryText.style.justifyContent = "center"
+                    }
+                    dropdown.setAttribute("data-expanded", "false");
+                    toggle.setAttribute("aria-expanded", "false");
+                    window.removeEventListener("resize", positionSizeOptions);
+                    window.removeEventListener(
+                        "scroll",
+                        positionSizeOptions,
+                        true,
+                    );
+                    if (refocusToggle) toggle.focus();
+                }
+
+                function currentlySelectedOption() {
+                    return sizeList.querySelector(
+                        '.product-popup__size-option[aria-selected="true"]',
+                    );
+                }
+
+                function selectOption(option) {
+                    var index =
+                        Number(option.getAttribute("data-size-index")) || 0;
+
+                    options.forEach(function (o) {
+                        o.setAttribute("aria-selected", String(o === option));
+                    });
+
+                    // Slides the shared black highlight to this row (see
+                    // .product-popup__size-highlight in gift-guide.css)
+                    // and reveals it the first time a size is picked —
+                    // same pattern as the Color toggle's --color-index.
+                    optionsWrap.style.setProperty(
+                        "--size-index",
+                        String(index),
+                    );
+                    optionsWrap.setAttribute("data-has-selection", "true");
+
+                    if (summaryText instanceof HTMLElement) {
+                        summaryText.textContent =
+                            option.getAttribute("data-option-value") || "";
+                    }
+
+                    setActiveOption(option);
+                    closeSizeList(true);
+                    maybeEnableAddToCart(picker);
+                }
+
+                toggle.addEventListener("click", function () {
+                    if (isSizeListOpen()) {
+                        closeSizeList(false);
+                        return;
+                    }
+                    openSizeList(currentlySelectedOption() || options[0]);
+                });
+
+                toggle.addEventListener("keydown", function (event) {
+                    if (event.key === "ArrowDown") {
+                        event.preventDefault();
+                        if (!isSizeListOpen()) {
+                            openSizeList(
+                                currentlySelectedOption() || options[0],
+                            );
+                        }
+                    }
+                });
+
+                options.forEach(function (option, index) {
+                    option.addEventListener("click", function () {
+                        selectOption(option);
+                    });
+
+                    option.addEventListener("keydown", function (event) {
+                        if (event.key === "ArrowDown") {
+                            event.preventDefault();
+                            var next =
+                                options[index + 1] ||
+                                options[options.length - 1];
+                            setActiveOption(next);
+                            next.focus();
+                        } else if (event.key === "ArrowUp") {
+                            event.preventDefault();
+                            var prev = options[index - 1] || options[0];
+                            setActiveOption(prev);
+                            prev.focus();
+                        } else if (event.key === "Enter" || event.key === " ") {
+                            event.preventDefault();
+                            selectOption(option);
+                        } else if (event.key === "Escape") {
+                            // Closes just this dropdown, not the whole
+                            // product popup — stopPropagation keeps the
+                            // popup-level Escape handler in initPopups()
+                            // from also treating this as "close the
+                            // popup" in the same keystroke.
+                            event.preventDefault();
+                            event.stopPropagation();
+                            closeSizeList(true);
+                        }
+                    });
+                });
+
+                // Click anywhere outside this dropdown closes it — the
+                // list isn't a full-screen overlay with its own backdrop,
+                // so this is scoped to "outside THIS dropdown" rather
+                // than reusing the popup's own [data-popup-close] wiring.
+                document.addEventListener("click", function (event) {
+                    if (!isSizeListOpen()) return;
+                    if (
+                        event.target instanceof Node &&
+                        !dropdown.contains(event.target)
+                    ) {
+                        closeSizeList(false);
+                    }
+                });
+            }
+        });
+}
+
+/**
+ * Enables the Add to Cart button once both Color and Size (whichever
+ * options actually exist for this product) have a selection. Variant
+ * resolution + the actual /cart/add.js call is still Phase 4 work.
+ * @param {Element} picker
+ */
+function maybeEnableAddToCart(picker) {
+    var panel = picker.closest(".product-popup__panel");
+    if (!panel) return;
+    var addBtn = panel.querySelector("[data-add-to-cart]");
+    if (!(addBtn instanceof HTMLElement)) return;
+
+    var hasColor = picker.querySelector(".product-popup__color-swatch")
+        ? true
+        : false;
+    var hasSize = picker.querySelector(".product-popup__size-option")
+        ? true
+        : false;
+
+    var colorPicked =
+        !hasColor ||
+        !!picker.querySelector(
+            '.product-popup__color-swatch[aria-pressed="true"]',
+        );
+    var sizePicked =
+        !hasSize ||
+        !!picker.querySelector(
+            '.product-popup__size-option[aria-selected="true"]',
+        );
+
+    if (colorPicked && sizePicked) {
+        addBtn.removeAttribute("disabled");
+    } else {
+        addBtn.setAttribute("disabled", "");
+    }
 }
 
 /**
