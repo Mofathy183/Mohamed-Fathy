@@ -1,63 +1,35 @@
 {% comment %}
   sections/banner.liquid
-  ------------------------------------------------------------------
-  Orchestrates the Banner section's three pieces — header, hero,
-  bottom strip — each rendered from its own snippet. This file itself
-  owns the {% schema %} (single source of settings, single customizer
-  entry — Shopify's {% style %} tag only works in sections, so all
-  section-scoped CSS also stays centralized here rather than being
-  split across the snippets below it).
+  Orchestrates the Banner section: header, hero, and bottom strip, each
+  rendered from its own snippet. Owns the {% schema %} and all
+  section-scoped CSS (the {% style %} tag only works in sections, so
+  styling for the snippets below stays centralized here).
 
     snippets/banner-header.liquid       → wordmark / tagline / CHOOSE GIFT / mobile toggle
     snippets/banner-hero.liquid         → heading / description / illustration / SHOP NOW
     snippets/banner-bottom-strip.liquid → the strip
 
-  This is a pure structural split of what was previously one longer
-  file — markup, styling, and schema are unchanged; only where the
-  markup physically lives moved.
-
-  Built from scratch (no Dawn section reuse), per hard constraint in
-  the build-context doc §2. All copy is customizer-editable via
-  schema settings — nothing hardcoded in the markup.
+  Built from scratch (no Dawn section reuse). All copy is
+  customizer-editable via schema settings.
 
   Depends on:
-    - assets/custom-sections.js → initMobileHeaderToggle() wires the
-      hamburger/X toggle for the mobile two-state header.
-    - assets/custom-sections.css → shared reset rules only; all
-      section-specific styling lives in the {% style %} block below.
+    - assets/gift-guide.js  → initMobileHeaderToggle() wires the mobile
+      hamburger/X toggle.
+    - assets/gift-guide.css → shared/reset rules; section-specific
+      styling lives in the {% style %} block below.
 
-  Scaling note (see build-context doc §4a/§8 "scaling caveat"):
-  the Figma type values (164.78px heading / 47.08px description) were
-  read off a 3,840px artboard that's very likely a 2x+ export canvas,
-  not the literal browser width. Rather than hardcode a single px
-  value that could be wildly wrong depending on the real render width,
-  headline/description sizing below uses `clamp()` scaled toward the
-  ~1920px-reference numbers the build-context doc itself suggests
-  (~82px / ~24px). Confirm against the live page once it's up and
-  adjust the clamp() bounds if needed — this is a deliberate stand-in,
-  not a literal Figma pixel value. Button sizes (244x44, 24x24 header
-  height fractions) are used at face value since the doc only flagged
-  *type* values as needing rescaling, not UI chrome.
+  Type scaling: Figma's desktop values (164.78px heading / 47.08px
+  description) come from a 3,840px artboard that's likely a 2x+ export
+  canvas, not the literal browser width. Heading/description sizing
+  below uses clamp() scaled toward the ~1920px-reference numbers
+  instead of the literal artboard pixels — verify against the live page
+  and adjust if needed.
 
-  Illustration background — desktop vs. mobile SVGs:
-  Figma provides two separate line-art illustration exports, not one
-  asset reused at different sizes — a wide/landscape composition for
-  desktop (icons scattered across the full hero width, positioned top
-  right per the layout below) and a narrower/taller composition for
-  the stacked mobile hero (see build-context doc §4a mobile section:
-  illustration sits as its own strip below the heading/description,
-  with "SHOP NOW" floating on it). These are fixed design assets, not
-  merchant content, so they ship as permanent theme files —
-  `assets/banner-illustration-desktop.svg` and
-  `assets/banner-illustration-mobile.svg` — referenced directly via
-  `asset_url` rather than through the Theme Editor. Desktop renders
-  its SVG as a CSS background-image on `.banner__hero` (unchanged
-  below, in snippets/banner-hero.liquid). Mobile renders its SVG as a
-  real `<img>` inside `.banner__hero-illustration` instead — see that
-  snippet's markup and this file's mobile media query for why a
-  background-image doesn't work for mobile's real-layout-element
-  requirement. Both assets always exist as part of the theme, so no
-  blank/fallback state is needed for either.
+  Illustration: desktop and mobile use two separate SVG exports (not one
+  asset reused), shipped as static theme assets referenced via
+  asset_url. Desktop renders its SVG as a CSS background-image on
+  .banner__hero; mobile renders a real <img> instead, since the stacked
+  mobile layout needs the illustration as a real layout element.
 {% endcomment %}
 
 <section class="banner__section section-{{ section.id }}" data-section-id="{{ section.id }}" data-section-type="banner">
@@ -67,10 +39,9 @@
 </section>
 
 {%- comment %}
-  Loaded once here since Banner is always the first section on the
-  Gift Guide page (see templates/page.gift-guide.json) — avoids
-  loading gift-guide.js/css a second time from product-grid.liquid or
-  snippets/product-popup.liquid.
+  Loaded once here since Banner always renders first on the Gift Guide
+  page (templates/page.gift-guide.json) — avoids a second load from
+  product-grid.liquid or product-popup.liquid.
 {% endcomment -%}
 <link rel="stylesheet" href="{{ 'gift-guide.css' | asset_url }}">
 <script src="{{ 'gift-guide.js' | asset_url }}" defer="defer"></script>
@@ -83,22 +54,18 @@
   /* Header bar */
   .banner__header {
     background: #f5f5f5;
-    padding: 1.75rem 2.5rem; /* taller bar than before — matches the reference's breathing room */
+    padding: 1.75rem 2.5rem;
   }
-  /* This is the actual fix for the header layout — .banner__content is
-    reused for both the header AND the hero, and only ever had
-    max-width/position set on it (no display:grid), so the
-    justify-self rules on wordmark/tagline/cta-group below were doing
-    nothing and everything was just stacking as normal block content.
-    Scoped to .banner__header so it doesn't affect the hero's use of
-     the same class. */
+  /* .banner__content is shared with the hero, so the grid layout is
+    scoped to .banner__header to avoid affecting the hero's use of the
+    same class. */
   @media (min-width: 481px) {
     .banner__header .banner__content {
       display: grid;
       grid-template-columns: auto 1fr auto;
       align-items: center;
       width: 100%;
-      max-width: none; /* overrides the 560px hero constraint in this context */
+      max-width: none;
       column-gap: 2rem;
     }
   }
@@ -106,7 +73,7 @@
     font-family: 'Jost', sans-serif;
     font-weight: 700;
     font-size: 1.5rem;
-    letter-spacing: 0.15em; /* the gap between "TISSO" and "VISON" in the reference */
+    letter-spacing: 0.15em;
     text-transform: uppercase;
     justify-self: start;
   }
@@ -123,10 +90,9 @@
     position: relative;
     z-index: 1;
   }
+  /* Desktop: dissolves the wrapper so tagline/CTA become direct grid
+    items of the header row, centering independently of button width. */
   .banner__header-expand {
-    /* Desktop: dissolve the wrapper so .banner__tagline and .banner__cta-group
-      become direct grid items of header-row's auto/1fr/auto tracks — this is
-       what makes the tagline center independently of the button group. */
     display: contents;
   }
   .banner__header-inner {
@@ -154,11 +120,11 @@
   .banner__nav-toggle[aria-expanded="true"] .banner__nav-icon-close { display: inline; }
 
   .banner__cta-group .banner__button--yellow {
-    width: 180px; /* adjust to match your real render — reference shows it wider than a tight text-fit button */
+    width: 180px;
     height: 48px;
   }
 
-  /* Buttons — used at face value (see scaling note above) */
+  /* Buttons */
   .icon-arrow {
     vertical-align: middle;
     margin-left: 0.5em;
@@ -206,14 +172,14 @@
   /* Hero */
   .banner__hero {
     position: relative;
-    min-height: 34rem; /* tune against your live page — this is what gives the illustration room to show above the text */
+    min-height: 34rem;
     display: flex;
-    align-items: flex-end;   /* text sits at the BOTTOM of the hero, not centered */
+    align-items: flex-end;
     justify-content: flex-start;
     padding: 3rem 4rem;
     background-image: url('{{ "banner-illustration-desktop.svg" | asset_url }}');
     background-repeat: no-repeat;
-    background-position: top right; /* keeps the icon cluster up/right, clear space stays bottom-left */
+    background-position: top right;
     background-size: contain;
   }
   .banner__content {
@@ -224,24 +190,24 @@
   .banner__heading {
     font-family: 'Jost', sans-serif;
     font-weight: 500;
-    font-size: clamp(2.75rem, 4vw, 4.25rem); /* ~64-68px at typical desktop widths */
+    font-size: clamp(2.75rem, 4vw, 4.25rem);
     line-height: 1;
     margin: 0 0 1.25rem;
   }
   .banner__description {
     font-family: 'Jost', sans-serif;
     font-weight: 400;
-    font-size: 1rem; /* ~16px, not fluid — stays small and steady per the reference */
+    font-size: 1rem;
     line-height: 1.4;
     max-width: 20rem;
     margin: 0 0 1.5rem;
   }
   .banner__description--mobile {
-    display: none; /* desktop shows the full paragraph by default */
+    display: none;
   }
 
   .banner__illustration {
-    min-width: 0; /* lets the grid track actually shrink the image instead of overflowing */
+    min-width: 0;
   }
   .banner__illustration img {
     width: 100%;
@@ -249,15 +215,9 @@
     display: block;
   }
 
-  /* Desktop: .banner__hero-text and .banner__hero-illustration are new
-    wrapper divs (added so mobile can treat the illustration as a real
-    layout element — see mobile media query below) but desktop's visual
-    output must stay byte-for-byte identical to before this refactor.
-    display: contents dissolves both wrappers so heading/description/
-    button fall back to being direct children of .banner__content,
-    exactly as they were pre-refactor, and the illustration <img>
-    (mobile-only content) is hidden outright since desktop keeps using
-    its existing .banner__hero background-image instead. */
+  /* Desktop: dissolves both wrappers so heading/description/button act
+    as direct children of .banner__content, and hides the mobile-only
+    illustration <img> since desktop uses the background-image above. */
   .banner__hero-text,
   .banner__hero-illustration {
     display: contents;
@@ -280,22 +240,22 @@
     margin: 0;
   }
   .banner__bottom-strip-text--mobile {
-    display: none; /* desktop copy shown by default */
+    display: none;
   }
 
-  /* Mobile — Frame 1, 402px fixed width per §4a Dev Mode inspect.
-    Stacked order confirmed: header → heading → description →
-    illustration (w/ SHOP NOW overlaid) → bottom strip. */
+  /* Mobile — 402px fixed width (Figma Frame 1). Stacked order: header →
+    heading → description → illustration (w/ SHOP NOW overlaid) →
+    bottom strip. */
   @media (max-width: 480px) {
     .banner__heading {
-      font-size: 1.875rem; /* 30px */
-      line-height: 1; /* 100% */
-      margin: 0 0 1.5rem; /* 24px gap to description (103px - (49px + 30px)) */
+      font-size: 1.875rem;
+      line-height: 1;
+      margin: 0 0 1.5rem;
     }
     .banner__description {
-      font-size: 1rem; /* 16px */
-      line-height: 1.3; /* 130% */
-      max-width: 21.25rem; /* 340px */
+      font-size: 1rem;
+      line-height: 1.3;
+      max-width: 21.25rem;
       margin: 0 auto 1rem;
     }
     .banner__description--desktop {
@@ -369,23 +329,15 @@
       margin: 0 auto 0.75rem;
     }
 
-    /* ── Hero, mobile ──────────────────────────────────────────────
-      Illustration is now a real layout element (a genuine <img>, see
-      markup above) instead of a CSS background — a background-image
-      on a fixed-height box has no intrinsic size for the browser to
-      lay out against, which is what previously produced a large gap
-      above the image and pushed the expandable header out of view.
-      An <img> in normal flow sizes itself from its own aspect ratio,
-      so no min-height guess is needed here at all.
-
-      .banner__content becomes the vertical stack: text block, then
-      illustration block, in source order — no absolute positioning
-      needed at this level anymore. */
+    /* Hero, mobile: illustration is a real <img> (see markup) instead
+      of a CSS background, so it sizes itself from its own aspect
+      ratio with no min-height guesswork. .banner__content becomes a
+      vertical stack: text block, then illustration block. */
     .banner__hero {
       min-height: 0;
       align-items: flex-start;
       background-image: none;
-      padding: 3.0625rem 1.25rem 0; /* 49px, per Dev Mode Top on the heading */
+      padding: 3.0625rem 1.25rem 0;
     }
     .banner__hero .banner__content {
       display: flex;
@@ -395,25 +347,23 @@
       max-width: none;
     }
 
-    /* Text block: plain white zone, heading + description only. */
     .banner__hero-text {
-      display: block; /* overrides the desktop-only `display: contents` above */
+      display: block;
       width: 100%;
     }
 
-    /* Illustration block: image + SHOP NOW, positioned relative to
-      *this* container rather than the whole hero — so the button
-      always sits on the image regardless of the image's own height. */
+    /* Positioned relative to this wrapper, not the whole hero, so
+      SHOP NOW always sits on the image regardless of image height. */
     .banner__hero-illustration {
-      display: block; /* overrides the desktop-only `display: contents` above */
+      display: block;
       position: relative;
       width: 100%;
       margin-top: 1.25rem;
     }
     .banner__hero-illustration-image {
-      display: block; /* overrides the desktop-only `display: none` above */
+      display: block;
       width: 100%;
-      height: auto; /* natural aspect ratio — no fixed/guessed height */
+      height: auto;
     }
     .banner__hero-illustration .banner__button {
       position: absolute;
@@ -482,7 +432,7 @@
       "type": "richtext",
       "id": "description_mobile",
       "label": "Description (mobile)",
-      "info": "Shown only on mobile in place of the full description — Figma's mobile frame uses a shorter, single-sentence version rather than the full desktop paragraph.",
+      "info": "Shown only on mobile in place of the full description.",
       "default": "<p>Discover Joy: Your Ultimate Holiday Gift Destination.</p>"
     },
     {
@@ -506,7 +456,7 @@
       "type": "text",
       "id": "bottom_strip_text_mobile",
       "label": "Bottom strip text (mobile)",
-      "info": "Confirmed different from the desktop copy in the Figma mobile frame — not a truncated version, a distinct string.",
+      "info": "Distinct from the desktop copy per the Figma mobile frame.",
       "default": "SUSTAINABLE, ETHICALLY MADE ACTIVEWEAR"
     }
   ],
