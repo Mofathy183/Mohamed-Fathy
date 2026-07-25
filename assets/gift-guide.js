@@ -12,19 +12,21 @@
  *    .product-grid__image-wrap) rather than a fixed full-screen
  *    modal — see the comment above initPopups() for what that
  *    changes about outside-click handling and scroll locking.
- *
- * Stubbed for later phases (left as named, empty-bodied functions so
- * the file's shape is stable and reviewable early — filled in during
- * Phase 4):
- *  - initVariantPickers()      → Phase 4
- *  - addToCart(variantId)      → Phase 4
- *  - maybeAddCrossSellItem()   → Phase 4 (Black + Medium → Soft Winter Jacket)
+ *  - initVariantPickers()      → Phase 3/4, Color toggle + Size
+ *    listbox UI, now also gating Add to Cart's enabled state.
+ *  - initAddToCart()           → Phase 4. Resolves the selected
+ *    variant from the embedded per-product JSON, POSTs it to
+ *    /cart/add.js, then runs maybeAddCrossSellItem() before showing
+ *    success/error feedback on the button itself.
+ *  - resolveVariant() / maybeAddCrossSellItem() → Phase 4 variant
+ *    matching + the Black+Medium → Soft Winter Jacket hidden rule.
  */
 
 document.addEventListener("DOMContentLoaded", function () {
     initMobileHeaderToggle();
     initPopups();
     initVariantPickers();
+    initAddToCart();
 });
 
 /**
@@ -141,13 +143,22 @@ function initVariantPickers() {
             // --color-count is set once up front from the actual number of
             // rendered swatches (not hardcoded to 2), so this still works
             // correctly if a product ever has more than two color values.
+            /** @type {HTMLElement|null} */
             var colorsWrapper = picker.querySelector(".product-popup__colors");
             var colorButtons = picker.querySelectorAll(
                 ".product-popup__color-swatch",
             );
 
             if (colorsWrapper instanceof HTMLElement && colorButtons.length) {
-                colorsWrapper.style.setProperty(
+                // Captured into a const so the `instanceof` narrowing above
+                // survives inside the click-handler closures below — TS
+                // can't otherwise prove a `var` hasn't been reassigned to
+                // null by the time an inner function actually runs, which
+                // is what produced the "possibly null" / "style doesn't
+                // exist on Element" errors on the un-narrowed `var`.
+                const colorsWrapperEl = colorsWrapper;
+
+                colorsWrapperEl.style.setProperty(
                     "--color-count",
                     String(colorButtons.length),
                 );
@@ -163,11 +174,11 @@ function initVariantPickers() {
                         // aria-pressed="false"); data-has-selection is what
                         // fades the highlight in the first time, after which
                         // only its position (--color-index) changes.
-                        colorsWrapper.style.setProperty(
+                        colorsWrapperEl.style.setProperty(
                             "--color-index",
                             String(index),
                         );
-                        colorsWrapper.setAttribute(
+                        colorsWrapperEl.setAttribute(
                             "data-has-selection",
                             "true",
                         );
@@ -200,6 +211,12 @@ function initVariantPickers() {
                 const dropdown = sizeDropdown;
                 const toggle = sizeToggle;
                 const optionsWrap = sizeOptionsWrap;
+                // Same narrowing-capture pattern as colorsWrapperEl above —
+                // `sizeList` is only checked with `instanceof` once, up in
+                // the outer `if`, so nested closures below (particularly
+                // currentlySelectedOption()) can't see that narrowing on
+                // their own and TS flags it as "possibly null".
+                const list = sizeList;
                 const summaryText = picker.querySelector(
                     "[data-size-summary-text]",
                 );
@@ -207,8 +224,9 @@ function initVariantPickers() {
                     summaryText instanceof HTMLElement
                         ? summaryText.textContent
                         : "";
+                /** @type {HTMLElement[]} */
                 const options = Array.prototype.slice.call(
-                    sizeList.querySelectorAll(".product-popup__size-option"),
+                    list.querySelectorAll(".product-popup__size-option"),
                 );
 
                 function isSizeListOpen() {
@@ -237,17 +255,19 @@ function initVariantPickers() {
                 // That's what lets ArrowUp/ArrowDown move focus between
                 // plain <li> options the way a native <select>'s list
                 // does, without every row being a separate Tab stop.
+                /** @param {Element} option */
                 function setActiveOption(option) {
                     options.forEach(function (o) {
                         o.setAttribute("tabindex", o === option ? "0" : "-1");
                     });
                 }
 
+                /** @param {Element} [focusOption] */
                 function openSizeList(focusOption) {
                     positionSizeOptions();
                     if (summaryText instanceof HTMLElement) {
                         summaryText.textContent = placeholderText;
-                        summaryText.style.justifyContent = "left"
+                        summaryText.style.justifyContent = "left";
                     }
                     dropdown.setAttribute("data-expanded", "true");
                     toggle.setAttribute("aria-expanded", "true");
@@ -266,13 +286,15 @@ function initVariantPickers() {
                     }
                 }
 
+                /** @param {boolean} refocusToggle */
                 function closeSizeList(refocusToggle) {
                     if (summaryText instanceof HTMLElement) {
                         var selected = currentlySelectedOption();
                         summaryText.textContent = selected
-                            ? selected.getAttribute("data-option-value") || placeholderText
+                            ? selected.getAttribute("data-option-value") ||
+                              placeholderText
                             : placeholderText;
-                        summaryText.style.justifyContent = "center"
+                        summaryText.style.justifyContent = "center";
                     }
                     dropdown.setAttribute("data-expanded", "false");
                     toggle.setAttribute("aria-expanded", "false");
@@ -286,11 +308,12 @@ function initVariantPickers() {
                 }
 
                 function currentlySelectedOption() {
-                    return sizeList.querySelector(
+                    return list.querySelector(
                         '.product-popup__size-option[aria-selected="true"]',
                     );
                 }
 
+                /** @param {Element} option */
                 function selectOption(option) {
                     var index =
                         Number(option.getAttribute("data-size-index")) || 0;
@@ -327,49 +350,60 @@ function initVariantPickers() {
                     openSizeList(currentlySelectedOption() || options[0]);
                 });
 
-                toggle.addEventListener("keydown", function (event) {
-                    if (event.key === "ArrowDown") {
-                        event.preventDefault();
-                        if (!isSizeListOpen()) {
-                            openSizeList(
-                                currentlySelectedOption() || options[0],
-                            );
+                toggle.addEventListener(
+                    "keydown",
+                    /** @param {KeyboardEvent} event */ function (event) {
+                        if (event.key === "ArrowDown") {
+                            event.preventDefault();
+                            if (!isSizeListOpen()) {
+                                openSizeList(
+                                    currentlySelectedOption() || options[0],
+                                );
+                            }
                         }
-                    }
-                });
+                    },
+                );
 
                 options.forEach(function (option, index) {
                     option.addEventListener("click", function () {
                         selectOption(option);
                     });
 
-                    option.addEventListener("keydown", function (event) {
-                        if (event.key === "ArrowDown") {
-                            event.preventDefault();
-                            var next =
-                                options[index + 1] ||
-                                options[options.length - 1];
-                            setActiveOption(next);
-                            next.focus();
-                        } else if (event.key === "ArrowUp") {
-                            event.preventDefault();
-                            var prev = options[index - 1] || options[0];
-                            setActiveOption(prev);
-                            prev.focus();
-                        } else if (event.key === "Enter" || event.key === " ") {
-                            event.preventDefault();
-                            selectOption(option);
-                        } else if (event.key === "Escape") {
-                            // Closes just this dropdown, not the whole
-                            // product popup — stopPropagation keeps the
-                            // popup-level Escape handler in initPopups()
-                            // from also treating this as "close the
-                            // popup" in the same keystroke.
-                            event.preventDefault();
-                            event.stopPropagation();
-                            closeSizeList(true);
-                        }
-                    });
+                    option.addEventListener(
+                        "keydown",
+                        /** @param {KeyboardEvent} event */ function (event) {
+                            if (event.key === "ArrowDown") {
+                                event.preventDefault();
+                                var next =
+                                    options[index + 1] ||
+                                    options[options.length - 1];
+                                if (!next) return;
+                                setActiveOption(next);
+                                next.focus();
+                            } else if (event.key === "ArrowUp") {
+                                event.preventDefault();
+                                var prev = options[index - 1] || options[0];
+                                if (!prev) return;
+                                setActiveOption(prev);
+                                prev.focus();
+                            } else if (
+                                event.key === "Enter" ||
+                                event.key === " "
+                            ) {
+                                event.preventDefault();
+                                selectOption(option);
+                            } else if (event.key === "Escape") {
+                                // Closes just this dropdown, not the whole
+                                // product popup — stopPropagation keeps the
+                                // popup-level Escape handler in initPopups()
+                                // from also treating this as "close the
+                                // popup" in the same keystroke.
+                                event.preventDefault();
+                                event.stopPropagation();
+                                closeSizeList(true);
+                            }
+                        },
+                    );
                 });
 
                 // Click anywhere outside this dropdown closes it — the
@@ -427,6 +461,121 @@ function maybeEnableAddToCart(picker) {
 }
 
 /**
+ * Handle of the seeded cross-sell product (see build-context doc
+ * §4b). Deliberately excluded from the visible grid so its embed
+ * (product-grid.liquid) and this constant are the only two places
+ * that reference it directly.
+ */
+var CROSS_SELL_HANDLE = "dark-winter-jacket";
+
+/**
+ * Parses the JSON payload out of a <script type="application/json">
+ * tag matched by `selector`. Returns null on any failure (missing
+ * element, malformed JSON) rather than throwing, so callers can treat
+ * "no data" and "bad data" the same way — as "can't resolve a variant
+ * right now."
+ * @param {string} selector
+ * @returns {any|null}
+ */
+function parseJsonScript(selector) {
+    var el = document.querySelector(selector);
+    if (!(el instanceof HTMLElement)) return null;
+    try {
+        return JSON.parse(el.textContent || "");
+    } catch (err) {
+        return null;
+    }
+}
+
+/**
+ * Shape of a single entry in Shopify's `product.variants | json` array,
+ * just the fields this file actually touches. The `Record<string, any>`
+ * intersection gives TS a string index signature — without it,
+ * `variant["option" + n]` (a dynamically-built key) is a type error,
+ * since a plain `{ id, option1?, option2?, option3? }` object type has
+ * no index signature of its own.
+ * @typedef {{ id: number|string, option1?: string, option2?: string, option3?: string } & Record<string, any>} ShopifyVariant
+ */
+
+/**
+ * Reads the currently selected Color/Size values out of a popup's
+ * [data-variant-picker], keyed by each control's own
+ * data-option-name (so this works whether the product's options are
+ * named exactly "Color"/"Size" or something else, and whether a
+ * product has one, two, or no variant options at all).
+ * @param {Element} picker
+ * @returns {Object<string, string>}
+ */
+function getSelectedOptions(picker) {
+    /** @type {Object<string, string>} */
+    var selected = {};
+
+    var colorBtn = picker.querySelector(
+        '.product-popup__color-swatch[aria-pressed="true"]',
+    );
+    if (colorBtn) {
+        var colorName = colorBtn.getAttribute("data-option-name");
+        if (colorName) {
+            selected[colorName] =
+                colorBtn.getAttribute("data-option-value") || "";
+        }
+    }
+
+    var sizeOption = picker.querySelector(
+        '.product-popup__size-option[aria-selected="true"]',
+    );
+    if (sizeOption) {
+        var sizeName = sizeOption.getAttribute("data-option-name");
+        if (sizeName) {
+            selected[sizeName] =
+                sizeOption.getAttribute("data-option-value") || "";
+        }
+    }
+
+    return selected;
+}
+
+/**
+ * Resolves the single variant (from a product's `variants | json`
+ * array) whose option1/option2/option3 values match `selectedByName`,
+ * using `optionsOrder` (that product's `options | json` array) to map
+ * each named selection onto the right optionN slot. Returns null if
+ * any option this product actually has is still unselected, or if no
+ * variant matches (shouldn't happen with real catalog data, but the
+ * UI treats it as "can't add to cart" rather than guessing).
+ * @param {Array<ShopifyVariant>|null} variants
+ * @param {Array<string>|null} optionsOrder
+ * @param {Object<string, string>} selectedByName
+ * @returns {ShopifyVariant|null}
+ */
+function resolveVariant(variants, optionsOrder, selectedByName) {
+    if (!Array.isArray(variants) || !Array.isArray(optionsOrder)) return null;
+
+    var orderedValues = optionsOrder.map(function (name) {
+        return selectedByName[name];
+    });
+
+    if (
+        orderedValues.some(function (value) {
+            return !value;
+        })
+    )
+        return null;
+
+    /** @type {ShopifyVariant|null} */
+    var match = null;
+    variants.some(function (variant) {
+        var isMatch = orderedValues.every(function (value, index) {
+            return variant["option" + (index + 1)] === value;
+        });
+        if (isMatch) match = variant;
+        return isMatch;
+    });
+
+    return match;
+}
+
+/**
  * Phase 4: POST a variant to Shopify's Ajax Cart API.
  * @param {number|string} variantId
  * @param {number} [quantity]
@@ -445,10 +594,151 @@ function addToCart(variantId, quantity) {
  * Phase 4: hidden cross-sell rule — if the option values just added
  * to cart are exactly Color: Black + Size: Medium, resolve and add
  * Soft Winter Jacket's (handle: dark-winter-jacket) matching
- * Black+Medium variant from its own embedded JSON. See build-context
- * doc §4b for why this is resolved dynamically rather than hardcoded.
- * @param {{color?: string, size?: string}} selectedOptions
+ * Black+Medium variant from its own embedded JSON (see
+ * product-grid.liquid's section-level embed, and build-context doc
+ * §4b for why this is resolved dynamically rather than hardcoded).
+ *
+ * A cross-sell that fails to resolve or fails to add is swallowed
+ * rather than surfaced as an error — the shopper's own item is
+ * already in the cart by the time this runs, and a silent rule that
+ * silently no-ops on the rare failure case is preferable to blocking
+ * or confusing them over a jacket they didn't ask to buy.
+ * @param {Object<string, string>} selectedOptions
+ * @returns {Promise<void>}
  */
 function maybeAddCrossSellItem(selectedOptions) {
-    // TODO (Phase 4)
+    var isTriggerCombo =
+        selectedOptions.Color === "Black" && selectedOptions.Size === "Medium";
+    if (!isTriggerCombo) return Promise.resolve();
+
+    /** @type {Array<ShopifyVariant>|null} */
+    var jacketVariants = parseJsonScript(
+        '[data-cross-sell-variants="' + CROSS_SELL_HANDLE + '"]',
+    );
+    /** @type {Array<string>|null} */
+    var jacketOptionsOrder = parseJsonScript(
+        '[data-cross-sell-options="' + CROSS_SELL_HANDLE + '"]',
+    );
+    var jacketVariant = resolveVariant(jacketVariants, jacketOptionsOrder, {
+        Color: "Black",
+        Size: "Medium",
+    });
+
+    if (!jacketVariant) return Promise.resolve();
+
+    // .then(onFulfilled, onRejected) rather than a bare .catch(): a lone
+    // .catch() leaves the success branch's resolved value as whatever
+    // addToCart() resolved to (a Response), so the chain's inferred type
+    // is `Promise<void | Response>` — not assignable to this function's
+    // declared `Promise<void>` return type. Explicitly discarding the
+    // value on both branches keeps the type (and the contract: callers
+    // never receive anything from this promise) honest.
+    return addToCart(jacketVariant.id).then(
+        function () {
+            // Cross-sell added successfully — nothing further to do.
+        },
+        function () {
+            // Swallowed by design — see function comment above.
+        },
+    );
+}
+
+/**
+ * Wires every popup's "ADD TO CART" button: resolves the selected
+ * variant from that product's own embedded JSON, POSTs it, then
+ * chains the hidden cross-sell check, then shows minimal
+ * success/error feedback directly on the button.
+ */
+function initAddToCart() {
+    document
+        .querySelectorAll("[data-variant-picker]")
+        .forEach(function (picker) {
+            var panel = picker.closest(".product-popup__panel");
+            var popup = panel && panel.closest("[data-product-popup]");
+            var addBtn = panel && panel.querySelector("[data-add-to-cart]");
+
+            if (
+                !(popup instanceof HTMLElement) ||
+                !(addBtn instanceof HTMLElement)
+            ) {
+                return;
+            }
+
+            // Captured into consts so the `instanceof` narrowing above
+            // survives inside the closures below (showFeedback, the click
+            // handler, the setTimeout callback) — same pattern as
+            // colorsWrapperEl/list above; without this, TS treats every
+            // later `addBtn`/`popup` reference as possibly null again.
+            const popupEl = popup;
+            const addToCartBtn = addBtn;
+
+            var productId = popupEl.getAttribute("data-product-id");
+            if (!productId) return;
+
+            // Preserve the original "ADD TO CART →" markup (icon included)
+            // so feedback states can restore it exactly, rather than
+            // hardcoding the label + icon a second time here.
+            var originalHtml = addToCartBtn.innerHTML;
+            /** @type {number|null} */
+            var feedbackTimer = null;
+
+            /**
+             * @param {string} message
+             * @param {boolean} isError
+             */
+            function showFeedback(message, isError) {
+                if (feedbackTimer) window.clearTimeout(feedbackTimer);
+                addToCartBtn.textContent = message;
+                addToCartBtn.classList.toggle(
+                    "product-popup__add-to-cart--error",
+                    !!isError,
+                );
+                feedbackTimer = window.setTimeout(function () {
+                    addToCartBtn.innerHTML = originalHtml;
+                    addToCartBtn.classList.remove(
+                        "product-popup__add-to-cart--error",
+                    );
+                    // Re-evaluate disabled state from actual selections
+                    // rather than assuming "enabled" — matches
+                    // maybeEnableAddToCart()'s own logic.
+                    maybeEnableAddToCart(picker);
+                }, 1800);
+            }
+
+            addToCartBtn.addEventListener("click", function () {
+                if (addToCartBtn.hasAttribute("disabled")) return;
+
+                /** @type {Array<ShopifyVariant>|null} */
+                var variants = parseJsonScript(
+                    '[data-product-json="' + productId + '"]',
+                );
+                /** @type {Array<string>|null} */
+                var optionsOrder = parseJsonScript(
+                    '[data-product-options="' + productId + '"]',
+                );
+                var selected = getSelectedOptions(picker);
+                var variant = resolveVariant(variants, optionsOrder, selected);
+
+                if (!variant) {
+                    showFeedback("No matching variant", true);
+                    return;
+                }
+
+                addToCartBtn.setAttribute("disabled", "");
+                addToCartBtn.textContent = "Adding…";
+
+                addToCart(variant.id)
+                    .then(function (response) {
+                        if (!response.ok)
+                            throw new Error("add.js request failed");
+                        return maybeAddCrossSellItem(selected);
+                    })
+                    .then(function () {
+                        showFeedback("Added!", false);
+                    })
+                    .catch(function () {
+                        showFeedback("Couldn't add — try again", true);
+                    });
+            });
+        });
 }
