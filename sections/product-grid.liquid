@@ -92,6 +92,29 @@
 
   <h2 class="product-grid__heading">{{ section.settings.heading }}</h2>
 
+  {%- comment %}
+    ── Hidden cross-sell data embed (Phase 4) ──
+    Soft Winter Jacket (handle: dark-winter-jacket) is deliberately
+    NOT one of the 6 visible grid products — see build-context doc
+    §4b: showing it as a directly-selectable tile would undercut the
+    "hidden" part of the Black+Medium cross-sell rule. Its variants +
+    option order are still embedded once here, at the section level
+    (not per-tile, since it's not tied to any one tile), so
+    gift-guide.js can resolve its matching variant client-side
+    against real data with zero extra network calls at click-time —
+    same embed pattern product-popup.liquid uses per visible product.
+    This never renders a popup or any visible UI for this product.
+  {%- endcomment -%}
+  {%- assign cross_sell_product = all_products['dark-winter-jacket'] -%}
+  {%- if cross_sell_product != blank -%}
+    <script type="application/json" data-cross-sell-variants="{{ cross_sell_product.handle }}">
+      {{ cross_sell_product.variants | json }}
+    </script>
+    <script type="application/json" data-cross-sell-options="{{ cross_sell_product.handle }}">
+      {{ cross_sell_product.options | json }}
+    </script>
+  {%- endif -%}
+
   <div class="product-grid__tiles">
     {%- for block in section.blocks -%}
       {%- assign grid_product = block.settings.product -%}
