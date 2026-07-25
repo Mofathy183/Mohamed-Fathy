@@ -1,0 +1,63 @@
+{% comment %}
+  snippets/banner-hero.liquid
+  ------------------------------------------------------------------
+  Hero content for the Banner section: heading, description
+  (desktop/mobile variants), illustration, and the "SHOP NOW" button.
+
+  Pure extraction from sections/banner.liquid — no markup/logic
+  changes. See that file's header comment for the full desktop-vs-
+  mobile illustration rationale (background-image on desktop, real
+  <img> on mobile) — unchanged by this split.
+
+  Expects:
+    - `section` passed in via {% render 'banner-hero', section: section %}
+{% endcomment %}
+
+{%- comment %}
+  ── Hero banner content ──
+  Structure: Hero > Text (heading/description) + Illustration (image/SHOP NOW).
+  Desktop keeps its illustration as a `.banner__hero` CSS background
+  (unchanged, see the {% style %} block in banner.liquid) and visually
+  ignores `.banner__hero-illustration`'s <img> (hidden at the desktop
+  breakpoint) — the wrapper exists in markup for both so the DOM
+  only renders once, but each breakpoint uses a different mechanism
+  for the same asset: desktop = background-image, mobile = a real
+  <img> with natural height (see mobile media query for why).
+{%- endcomment -%}
+<div class="banner__hero">
+  <div class="banner__content">
+    <div class="banner__hero-text">
+      <h1 class="banner__heading">{{ section.settings.heading }}</h1>
+      {%- comment %} Desktop shows the full paragraph; mobile shows a shorter, single-sentence version per the Figma mobile frame — same desktop/mobile toggle pattern as the bottom strip below. {% endcomment -%}
+      <div class="banner__description banner__description--desktop">{{ section.settings.description }}</div>
+      <div class="banner__description banner__description--mobile">{{ section.settings.description_mobile }}</div>
+    </div>
+
+    <div class="banner__hero-illustration">
+      {%- comment %}
+        Mobile-only real <img> (desktop hides this and keeps using
+        its existing background-image approach instead — see
+        {% style %}). Static theme asset, guaranteed to exist — no
+        conditional or fallback needed. width/height below are the
+        SVG's intrinsic dimensions (required by theme-check's
+        ImgWidthAndHeight rule) — CSS still forces width:100%;
+        height:auto at render time, so these only set the aspect
+        ratio for layout/CLS purposes. Update if the source SVG's
+        own viewBox dimensions differ.
+      {%- endcomment -%}
+      <img
+        src="{{ 'banner-illustration-mobile.svg' | asset_url }}"
+        alt=""
+        role="presentation"
+        loading="lazy"
+        width="800"
+        height="600"
+        class="banner__hero-illustration-image"
+      >
+
+      <a href="{{ section.settings.banner_button_link | default: '#' }}" class="banner__button banner__button--black">
+        {{ section.settings.banner_button_label }} {% render 'icon-arrow' %}
+      </a>
+    </div>
+  </div>
+</div>

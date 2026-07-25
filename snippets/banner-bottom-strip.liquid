@@ -1,0 +1,26 @@
+{% comment %}
+  snippets/banner-bottom-strip.liquid
+  ------------------------------------------------------------------
+  Full-width bottom strip below the Banner hero.
+
+  Pure extraction from sections/banner.liquid — no markup/logic
+  changes. Desktop/mobile copy are two independent settings (not one
+  string truncated by CSS), confirmed different in Figma — see
+  build-context doc.
+
+  Expects:
+    - `section` passed in via {% render 'banner-bottom-strip', section: section %}
+{% endcomment %}
+
+{%- comment %}
+  ── Bottom strip ──
+  Confirmed via Figma that mobile and desktop bottom-strip copy is
+  NOT the same string (desktop: "...CLOTHES IN SIZES XXS TO 6XL",
+  mobile: "...ACTIVEWEAR") — so this needs two independent settings,
+  toggled by CSS display at the same 480px breakpoint used
+  elsewhere, rather than one shared string.
+{% endcomment -%}
+<div class="banner__bottom-strip">
+  <p class="banner__bottom-strip-text banner__bottom-strip-text--desktop">{{ section.settings.bottom_strip_text }}</p>
+  <p class="banner__bottom-strip-text banner__bottom-strip-text--mobile">{{ section.settings.bottom_strip_text_mobile }}</p>
+</div>
