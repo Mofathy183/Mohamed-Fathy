@@ -1,27 +1,17 @@
 {% comment %}
   snippets/banner-header.liquid
-  ------------------------------------------------------------------
-  Global header bar for the Banner section: wordmark / tagline /
-  "CHOOSE GIFT" button, plus the mobile hamburger↔X toggle.
+  Global header: wordmark, tagline, "CHOOSE GIFT" button, and the mobile
+  hamburger/X toggle. Styling lives in banner.liquid's {% style %} block
+  (snippets can't use {% style %}); toggle behavior is wired in
+  gift-guide.js via initMobileHeaderToggle().
 
-  Pure extraction from sections/banner.liquid — no markup/logic
-  changes, just moved here so banner.liquid can orchestrate three
-  focused snippets instead of one long file. Styling stays in
-  banner.liquid's {% style %} block (snippets can't use {% style %}),
-  and initMobileHeaderToggle() in gift-guide.js keeps working
-  unchanged since it's wired via data-attributes/IDs, not file
-  location.
-
-  Expects:
-    - `section` passed in via {% render 'banner-header', section: section %}
+  Expects: `section` (render 'banner-header', section: section)
 {% endcomment %}
-
-{%- comment %} ── Global header bar (wordmark / tagline / CHOOSE GIFT) ── {% endcomment -%}
 <div class="banner__header">
   <div class="banner__content">
       <span class="banner__wordmark">{{ section.settings.wordmark }}</span>
 
-      {%- comment %} Mobile-only hamburger/X toggle. Hidden on desktop via CSS. {% endcomment -%}
+      {%- comment %} Mobile-only hamburger/X toggle, hidden on desktop via CSS. {% endcomment -%}
       <button
       type="button"
       class="banner__nav-toggle"
@@ -35,13 +25,10 @@
     </button>
 
     {%- comment %}
-      Desktop: display:contents dissolves this wrapper so tagline and
-      header-expand become direct children of the 3-column header-row
-      grid (auto 1fr auto) — that's what makes the tagline sit truly
-      centered, independent of the button group's width. Mobile: the
-      wrapper becomes a real flex column, hidden by default and toggled
-      via data-expanded by initMobileHeaderToggle() in gift-guide.js
-      (aria-controls above points at this element's id).
+      Desktop: display:contents dissolves this wrapper so tagline and CTA
+      become direct children of the header's 3-column grid, centering the
+      tagline independent of button width. Mobile: becomes a real flex
+      column, toggled by initMobileHeaderToggle() via data-expanded.
     {%- endcomment -%}
     <div class="banner__header-expand" id="BannerHeaderExpand-{{ section.id }}" data-nav-expand>
       <p class="banner__tagline">{{ section.settings.tagline }}</p>
