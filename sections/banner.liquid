@@ -1,10 +1,24 @@
 {% comment %}
   sections/banner.liquid
   ------------------------------------------------------------------
-  Global header strip + hero banner + bottom strip for "The Gift
-  Guide" page. Built from scratch (no Dawn section reuse), per hard
-  constraint in the build-context doc §2. All copy is customizer-
-  editable via schema settings — nothing hardcoded in the markup.
+  Orchestrates the Banner section's three pieces — header, hero,
+  bottom strip — each rendered from its own snippet. This file itself
+  owns the {% schema %} (single source of settings, single customizer
+  entry — Shopify's {% style %} tag only works in sections, so all
+  section-scoped CSS also stays centralized here rather than being
+  split across the snippets below it).
+
+    snippets/banner-header.liquid       → wordmark / tagline / CHOOSE GIFT / mobile toggle
+    snippets/banner-hero.liquid         → heading / description / illustration / SHOP NOW
+    snippets/banner-bottom-strip.liquid → the strip
+
+  This is a pure structural split of what was previously one longer
+  file — markup, styling, and schema are unchanged; only where the
+  markup physically lives moved.
+
+  Built from scratch (no Dawn section reuse), per hard constraint in
+  the build-context doc §2. All copy is customizer-editable via
+  schema settings — nothing hardcoded in the markup.
 
   Depends on:
     - assets/custom-sections.js → initMobileHeaderToggle() wires the
@@ -38,114 +52,18 @@
   `assets/banner-illustration-mobile.svg` — referenced directly via
   `asset_url` rather than through the Theme Editor. Desktop renders
   its SVG as a CSS background-image on `.banner__hero` (unchanged
-  below). Mobile renders its SVG as a real `<img>` inside
-  `.banner__hero-illustration` instead — see that section's
-  markup/CSS for why a background-image doesn't work for mobile's
-  real-layout-element requirement. Both assets always exist as part
-  of the theme, so no blank/fallback state is needed for either.
+  below, in snippets/banner-hero.liquid). Mobile renders its SVG as a
+  real `<img>` inside `.banner__hero-illustration` instead — see that
+  snippet's markup and this file's mobile media query for why a
+  background-image doesn't work for mobile's real-layout-element
+  requirement. Both assets always exist as part of the theme, so no
+  blank/fallback state is needed for either.
 {% endcomment %}
 
 <section class="banner__section section-{{ section.id }}" data-section-id="{{ section.id }}" data-section-type="banner">
-
-  {%- comment %} ── Global header bar (wordmark / tagline / CHOOSE GIFT) ── {% endcomment -%}
-  <div class="banner__header">
-    <div class="banner__content">
-        <span class="banner__wordmark">{{ section.settings.wordmark }}</span>
-
-        {%- comment %} Mobile-only hamburger/X toggle. Hidden on desktop via CSS. {% endcomment -%}
-        <button
-        type="button"
-        class="banner__nav-toggle"
-        data-nav-toggle
-        aria-expanded="false"
-        aria-controls="BannerHeaderExpand-{{ section.id }}"
-        aria-label="Toggle menu"
-      >
-        <span class="banner__nav-icon-open">{% render 'icon-hamburger' %}</span>
-        <span class="banner__nav-icon-close">{% render 'icon-close' %}</span>
-      </button>
-
-      {%- comment %}
-        Desktop: display:contents dissolves this wrapper so tagline and
-        header-expand become direct children of the 3-column header-row
-        grid (auto 1fr auto) — that's what makes the tagline sit truly
-        centered, independent of the button group's width. Mobile: the
-        wrapper becomes a real flex column, hidden by default and toggled
-        via data-expanded by initMobileHeaderToggle() in gift-guide.js
-        (aria-controls above points at this element's id).
-      {%- endcomment -%}
-      <div class="banner__header-expand" id="BannerHeaderExpand-{{ section.id }}" data-nav-expand>
-        <p class="banner__tagline">{{ section.settings.tagline }}</p>
-        <div class="banner__cta-group">
-          <a href="{{ section.settings.header_button_link | default: '#' }}" class="banner__button banner__button--yellow">
-            {{ section.settings.header_button_label }} {% render 'icon-arrow' %}
-          </a>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  {%- comment %}
-    ── Hero banner content ──
-    Structure: Hero > Text (heading/description) + Illustration (image/SHOP NOW).
-    Desktop keeps its illustration as a `.banner__hero` CSS background
-    (unchanged, see the {% style %} block below) and visually ignores
-    `.banner__hero-illustration`'s <img> (hidden at the desktop
-    breakpoint) — the wrapper exists in markup for both so the DOM
-    only renders once, but each breakpoint uses a different mechanism
-    for the same asset: desktop = background-image, mobile = a real
-    <img> with natural height (see mobile media query for why).
-  {%- endcomment -%}
-  <div class="banner__hero">
-    <div class="banner__content">
-      <div class="banner__hero-text">
-        <h1 class="banner__heading">{{ section.settings.heading }}</h1>
-        {%- comment %} Desktop shows the full paragraph; mobile shows a shorter, single-sentence version per the Figma mobile frame — same desktop/mobile toggle pattern as the bottom strip below. {% endcomment -%}
-        <div class="banner__description banner__description--desktop">{{ section.settings.description }}</div>
-        <div class="banner__description banner__description--mobile">{{ section.settings.description_mobile }}</div>
-      </div>
-
-      <div class="banner__hero-illustration">
-        {%- comment %}
-          Mobile-only real <img> (desktop hides this and keeps using
-          its existing background-image approach instead — see
-          {% style %}). Static theme asset, guaranteed to exist — no
-          conditional or fallback needed. width/height below are the
-          SVG's intrinsic dimensions (required by theme-check's
-          ImgWidthAndHeight rule) — CSS still forces width:100%;
-          height:auto at render time, so these only set the aspect
-          ratio for layout/CLS purposes. Update if the source SVG's
-          own viewBox dimensions differ.
-        {%- endcomment -%}
-        <img
-          src="{{ 'banner-illustration-mobile.svg' | asset_url }}"
-          alt=""
-          role="presentation"
-          loading="lazy"
-          width="800"
-          height="600"
-          class="banner__hero-illustration-image"
-        >
-
-        <a href="{{ section.settings.banner_button_link | default: '#' }}" class="banner__button banner__button--black">
-          {{ section.settings.banner_button_label }} {% render 'icon-arrow' %}
-        </a>
-      </div>
-    </div>
-  </div>
-
-  {%- comment %}
-    ── Bottom strip ──
-    Confirmed via Figma that mobile and desktop bottom-strip copy is
-    NOT the same string (desktop: "...CLOTHES IN SIZES XXS TO 6XL",
-    mobile: "...ACTIVEWEAR") — so this needs two independent settings,
-    toggled by CSS display at the same 480px breakpoint used
-    elsewhere, rather than one shared string.
-  {% endcomment -%}
-  <div class="banner__bottom-strip">
-    <p class="banner__bottom-strip-text banner__bottom-strip-text--desktop">{{ section.settings.bottom_strip_text }}</p>
-    <p class="banner__bottom-strip-text banner__bottom-strip-text--mobile">{{ section.settings.bottom_strip_text_mobile }}</p>
-  </div>
+  {%- render 'banner-header', section: section -%}
+  {%- render 'banner-hero', section: section -%}
+  {%- render 'banner-bottom-strip', section: section -%}
 </section>
 
 {%- comment %}
