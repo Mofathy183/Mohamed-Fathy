@@ -1,21 +1,15 @@
 {% comment %}
   snippets/product-popup.liquid
-  ------------------------------------------------------------------
-  Per-product popup, rendered once per Grid tile:
+  Per-product popup, rendered once per grid tile:
     {% render 'product-popup', product: grid_product %}
 
-  ARCHITECTURE (updated): this is now a real centered MODAL — fixed
-  full-viewport overlay + dimmed backdrop + a centered panel — not an
-  image-anchored absolute box. Matches the Figma reference exactly:
-  photo+info sit side by side at the top, Color renders as a two-
-  segment toggle (not swatch chips), Size is a custom expand/collapse
-  dropdown (not a native <select>), then Add to Cart.
+  A centered modal (fixed overlay + backdrop + centered panel), matching
+  the Figma reference: photo + info side by side, Color as a two-segment
+  toggle, Size as a custom expand/collapse listbox, then Add to Cart.
 
-  Hidden by default (`hidden` attribute). Opened by its tile's
-  circular marker via data-popup-target="popup-{{ product.id }}".
-  Closed by ANY element carrying data-popup-close — that's both the
-  "X" button and the backdrop div, so clicking outside the card closes
-  it for free without extra outside-click JS.
+  Hidden by default. Opened by its tile's marker via
+  data-popup-target="popup-{{ product.id }}". Any element with
+  data-popup-close (the "X" and the backdrop) closes it.
 
   Depends on:
     - assets/gift-guide.css → modal/backdrop/panel/toggle/dropdown styling
@@ -65,20 +59,11 @@
       <div class="product-popup__variant-picker" data-variant-picker>
 
         {%- comment %}
-          ── Color: two-segment (or N-segment) toggle, driven by
-          options_with_values, nothing hardcoded ──
-
-          Nothing is pre-selected on open: every button below renders
-          aria-pressed="false", including the first one. The
-          `.product-popup__color-highlight` span is a single shared
-          element (not per-button background) that slides between
-          segments via a `transform`, driven by the --color-index
-          custom property gift-guide.js sets on click — that's what
-          makes picking a different color a smooth slide instead of
-          the fill disappearing on one button and reappearing on the
-          other. See gift-guide.css for the full rationale, including
-          why the left-edge swatch-color bar no longer gets covered by
-          the black fill when a segment is selected.
+          Color: two-segment (or N-segment) toggle built from
+          options_with_values, nothing hardcoded. Nothing is pre-selected
+          on open (every button starts aria-pressed="false"); a single
+          shared highlight element slides between segments via
+          --color-index, set by gift-guide.js on click.
         {%- endcomment -%}
         {%- assign popup_color_option = product.options_with_values | where: "name", "Color" | first -%}
         {%- if popup_color_option -%}
@@ -88,12 +73,10 @@
               <span class="product-popup__color-highlight" aria-hidden="true"></span>
               {%- for value in popup_color_option.values -%}
                 {%- comment %}
-                  Prefer Shopify's native option-value swatch (admin-configured,
-                  Settings → Products → Option value swatches, or a linked
-                  shopify.color-pattern metaobject) — a real color the merchant
-                  set, not a guess. Falls back to the name-based hex map when no
-                  swatch exists, which is every value in this test's seeded CSV
-                  catalog (plain demo products, no swatches configured).
+                  Prefer Shopify's native option-value swatch when the
+                  merchant has configured one; fall back to a name-based
+                  hex map otherwise (true for every value in this test's
+                  seeded catalog, which has no swatches configured).
                 {% endcomment -%}
                 {%- if value.swatch.color -%}
                   {%- assign swatch_hex = value.swatch.color -%}
@@ -132,29 +115,12 @@
         {%- endif -%}
 
         {%- comment %}
-          ── Size: custom listbox (NOT a native <select>) ──
-
-          Rebuilt to match the full spec: a dedicated arrow zone on
-          the toggle (separated by its own vertical divider, not just
-          an icon floating in the padding), and — unlike the previous
-          pass — the selected row DOES stay highlighted black while
-          the list is open, exactly like the Color toggle's sliding
-          fill. `.product-popup__size-highlight` is one shared element
-          (not per-row background) positioned inside
-          `[data-size-options-wrap]` and moved with `transform:
-          translateY(...)` driven by the --size-index custom property
-          gift-guide.js sets on selection — that's what makes jumping
-          from row to row a smooth slide instead of a hard swap. Every
-          row shares one fixed --size-row-height (set on the wrap, so
-          both the highlight and the rows inherit the same value) so
-          the highlight always lines up exactly with the row it's
-          covering, whatever the row count.
-
-          Semantics: real listbox pattern (ul[role=listbox] > li[role=
-          option]), not buttons-styled-as-options — aria-selected
-          (not aria-pressed) marks the current row, and
-          gift-guide.js wires ArrowUp/ArrowDown/Enter/Escape so it
-          behaves like a native <select> for keyboard users.
+          Size: a real listbox (ul[role=listbox] > li[role=option]), not a
+          native <select> and not buttons — matches the Figma spec's
+          expand/collapse dropdown with a dedicated arrow zone. A shared
+          highlight element slides to the selected row via --size-index;
+          gift-guide.js wires Arrow keys / Enter / Escape for keyboard
+          parity with a native <select>.
         {%- endcomment -%}
         {%- assign popup_size_option = product.options_with_values | where: "name", "Size" | first -%}
         {%- if popup_size_option -%}
@@ -211,13 +177,11 @@
       </script>
 
       {%- comment %}
-        Phase 4: variant resolution needs to know WHICH option slot
-        (option1/option2/…) corresponds to "Color" vs "Size" for THIS
-        product — that mapping isn't in the variants JSON above, it's
-        only available via product.options (an ordered array of
-        option names). Embedded once per product, keyed the same way
-        as the variants script tag above, so gift-guide.js can pull
-        both by product id and zip them together.
+        Variant resolution needs to know which option slot (option1/
+        option2/…) maps to "Color" vs "Size" for this product — that
+        mapping isn't in the variants JSON above, only in
+        product.options. Embedded here, keyed the same way, so
+        gift-guide.js can zip the two together by product id.
       {%- endcomment -%}
       <script type="application/json" data-product-options="{{ product.id }}">
         {{ product.options | json }}
