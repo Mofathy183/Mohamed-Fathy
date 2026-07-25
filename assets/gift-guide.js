@@ -1,3 +1,5 @@
+import { CartLinesUpdateEvent } from "@shopify/events";
+
 /**
  * assets/gift-guide.js
  * Shared vanilla JS for the Banner + Product Grid sections and the
@@ -498,64 +500,52 @@ function resolveVariant(variants, optionsOrder, selectedByName) {
 }
 
 /**
- * POSTs a variant to Shopify's Ajax Cart API.
- * @param {number|string} variantId
- * @param {number} [quantity]
- * @returns {Promise<Response>}
+ * POSTs one or more variants to /cart/add.js sequentially (needed for the
+ * Black+Medium cross-sell, which is two adds), then fetches the fresh
+ * /cart.js snapshot once at the end.
+ * @param {Array<{id:number|string, quantity:number}>} items
+ * @returns {Promise<any>} the raw /cart.js AJAX cart response
  */
-function addToCart(variantId, quantity) {
-    quantity = quantity || 1;
-    return fetch("/cart/add.js", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: variantId, quantity: quantity }),
-    });
+async function postCartAdds(items) {
+    for (var i = 0; i < items.length; i++) {
+        var item = items[i];
+        var response = await fetch("/cart/add.js", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                id: item?.id,
+                quantity: item?.quantity || 1,
+            }),
+        });
+        if (!response.ok) throw new Error("add.js request failed");
+    }
+
+    var cartResponse = await fetch("/cart.js");
+    return cartResponse.json();
 }
 
 /**
- * Hidden cross-sell rule: if the option values just added to cart are
- * exactly Color: Black + Size: Medium, resolve and add Soft Winter
- * Jacket's matching variant from its own embedded JSON
- * (product-grid.liquid's section-level embed).
- *
- * A cross-sell that fails to resolve or add is swallowed rather than
- * surfaced — the shopper's own item is already in the cart, and a rule
- * that silently no-ops on the rare failure case is preferable to
- * blocking or confusing them over a jacket they didn't ask to buy.
+ * Resolves Soft Winter Jacket's Black+Medium variant if the just-selected
+ * options are exactly Color: Black + Size: Medium. Returns null otherwise
+ * or if no match is found — caller decides what to do with null.
  * @param {Object<string, string>} selectedOptions
- * @returns {Promise<void>}
+ * @returns {ShopifyVariant|null}
  */
-function maybeAddCrossSellItem(selectedOptions) {
+function resolveCrossSellVariant(selectedOptions) {
     var isTriggerCombo =
         selectedOptions.Color === "Black" && selectedOptions.Size === "Medium";
-    if (!isTriggerCombo) return Promise.resolve();
+    if (!isTriggerCombo) return null;
 
-    /** @type {Array<ShopifyVariant>|null} */
     var jacketVariants = parseJsonScript(
         '[data-cross-sell-variants="' + CROSS_SELL_HANDLE + '"]',
     );
-    /** @type {Array<string>|null} */
     var jacketOptionsOrder = parseJsonScript(
         '[data-cross-sell-options="' + CROSS_SELL_HANDLE + '"]',
     );
-    var jacketVariant = resolveVariant(jacketVariants, jacketOptionsOrder, {
+    return resolveVariant(jacketVariants, jacketOptionsOrder, {
         Color: "Black",
         Size: "Medium",
     });
-
-    if (!jacketVariant) return Promise.resolve();
-
-    // .then(onFulfilled, onRejected) instead of a bare .catch(), so the
-    // resolved value stays discarded on both branches and the chain's
-    // type matches this function's declared Promise<void> return type.
-    return addToCart(jacketVariant.id).then(
-        function () {
-            // Cross-sell added successfully — nothing further to do.
-        },
-        function () {
-            // Swallowed by design — see function comment above.
-        },
-    );
 }
 
 /**
@@ -614,11 +604,9 @@ function initAddToCart() {
             addToCartBtn.addEventListener("click", function () {
                 if (addToCartBtn.hasAttribute("disabled")) return;
 
-                /** @type {Array<ShopifyVariant>|null} */
                 var variants = parseJsonScript(
                     '[data-product-json="' + productId + '"]',
                 );
-                /** @type {Array<string>|null} */
                 var optionsOrder = parseJsonScript(
                     '[data-product-options="' + productId + '"]',
                 );
@@ -630,15 +618,43 @@ function initAddToCart() {
                     return;
                 }
 
+                var itemsToAdd = [{ id: variant.id, quantity: 1 }];
+                var jacketVariant = resolveCrossSellVariant(selected);
+                if (jacketVariant)
+                    itemsToAdd.push({ id: jacketVariant.id, quantity: 1 });
+
                 addToCartBtn.setAttribute("disabled", "");
                 addToCartBtn.textContent = "Adding…";
 
-                addToCart(variant.id)
-                    .then(function (response) {
-                        if (!response.ok)
-                            throw new Error("add.js request failed");
-                        return maybeAddCrossSellItem(selected);
-                    })
+                // Dispatch immediately with a pending promise — cart-icon.js and
+                // cart-drawer.js (both listen on document) update themselves once it
+                // resolves. This is the theme's own update mechanism; no manual DOM
+                // patching or extra fetches needed on our end beyond the adds below.
+                var resultPromise = postCartAdds(itemsToAdd).then(
+                    function (ajaxCart) {
+                        return {
+                            cart: CartLinesUpdateEvent.createCartFromAjaxResponse(
+                                ajaxCart,
+                            ),
+                        };
+                    },
+                );
+
+                document.dispatchEvent(
+                    new CartLinesUpdateEvent({
+                        action: "add",
+                        context: "dialog",
+                        lines: itemsToAdd.map(function (item) {
+                            return {
+                                merchandiseId: item.id,
+                                quantity: item.quantity,
+                            };
+                        }),
+                        promise: resultPromise,
+                    }),
+                );
+
+                resultPromise
                     .then(function () {
                         showFeedback("Added!", false);
                     })
