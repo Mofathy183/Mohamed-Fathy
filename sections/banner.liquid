@@ -172,16 +172,45 @@
   /* Hero */
   .banner__hero {
     position: relative;
-    min-height: 34rem;
-    display: flex;
-    align-items: flex-end;
-    justify-content: flex-start;
-    padding: 3rem 4rem;
-    background-image: url('{{ "banner-illustration-desktop.svg" | asset_url }}');
-    background-repeat: no-repeat;
-    background-position: top right;
-    background-size: contain;
+    /* no more artificial min-height or aspect-ratio lock — the box grows
+      from real content, and the paddings below reserve exactly the
+      right amount of room for each illustration layer, scaling with
+      width the same way the layers themselves do. */
+    padding-top: 30%;     /* clears the top strip: 1065/3840 = 27.7%, +~2% breathing room */
+    padding-bottom: 4rem; /* just breathing room above the bottom strip section — not illustration-related, so a plain rem value is fine here */
+    padding-left: 4rem;
+    padding-right: 4rem;
+    display: block;
+    overflow: hidden;
   }
+
+  .banner__hero-illustration-layer {
+    position: absolute;
+    background-repeat: no-repeat;
+    background-size: 100% auto;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .banner__hero-illustration-layer--top {
+    top: 0;
+    left: 0;
+    width: 100%;
+    aspect-ratio: 3840 / 1065;
+    background-image: url('{{ "banner-illustration-top.svg" | asset_url }}');
+    background-position: top left;
+  }
+
+  .banner__hero-illustration-layer--bottom {
+    bottom: 0; /* literal value, not a %, so it's immune to the height-vs-width mismatch */
+    right: 0;
+    width: 61.82%;
+    aspect-ratio: 2374 / 1072;
+    background-image: url('{{ "banner-illustration-bottom.svg" | asset_url }}');
+    background-position: bottom right;
+  }
+
+
   .banner__content {
     max-width: 560px;
     position: relative;
@@ -263,6 +292,10 @@
     }
     .banner__description--mobile {
       display: block;
+    }
+
+    .banner__hero-illustration-layer {
+      display: none; /* desktop-only bleed art — mobile uses its own <img> in banner-hero.liquid instead */
     }
 
     .banner__header .banner__content {
