@@ -209,6 +209,19 @@
       <script type="application/json" data-product-json="{{ product.id }}">
         {{ product.variants | json }}
       </script>
+
+      {%- comment %}
+        Phase 4: variant resolution needs to know WHICH option slot
+        (option1/option2/…) corresponds to "Color" vs "Size" for THIS
+        product — that mapping isn't in the variants JSON above, it's
+        only available via product.options (an ordered array of
+        option names). Embedded once per product, keyed the same way
+        as the variants script tag above, so gift-guide.js can pull
+        both by product id and zip them together.
+      {%- endcomment -%}
+      <script type="application/json" data-product-options="{{ product.id }}">
+        {{ product.options | json }}
+      </script>
     </div>
   </div>
 {%- endif -%}
