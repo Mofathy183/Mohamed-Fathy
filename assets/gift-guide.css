@@ -1,50 +1,21 @@
 /**
  * assets/gift-guide.css
- * ------------------------------------------------------------------
- * Shared styles for The Gift Guide page that can't live in a
+ * Shared styles for the Gift Guide page that can't live in a
  * section-scoped {% style %} block — mainly snippets/product-popup.liquid,
- * since the {% style %} tag is only available in sections/blocks, not
- * snippets. Loaded once from sections/banner.liquid alongside gift-guide.js.
+ * since {% style %} only works in sections/blocks, not snippets. Loaded
+ * once from sections/banner.liquid alongside gift-guide.js.
  */
 
-/**
- * IMAGE-ANCHORED POPUP (not a fixed full-screen modal)
- * ------------------------------------------------------------------
- * Each .product-popup is rendered as a child of its own tile's
- * .product-grid__image-wrap (see sections/product-grid.liquid), the
- * same `position: relative` box the "+" hotspot marker is positioned
- * against. So the popup here is `position: absolute` relative to
- * THAT wrapper, not `position: fixed` against the viewport — it opens
- * attached to its own product photo and stays there through page
- * scroll/resize, rather than centering over the whole screen with a
- * dimming backdrop.
- *
- * There is no shared backdrop element (an image-anchored popup isn't
- * a modal, so a viewport-dimming scrim doesn't apply) — outside-click
- * closing is instead handled in JS by checking whether the click
- * landed inside the open popup's own .product-grid__image-wrap.
- *
- * Overflow handling: tiles can be narrow (down to a single mobile
- * column), so the panel's width is clamped with min()/max() against
- * the wrapper rather than given a fixed px width, and horizontal
- * position is nudged back on-screen via the safe-area clamp below so
- * it never runs off either edge of the viewport.
- */
+/* Containing block for the popup's hotspot marker (see product-grid.liquid). */
 .product-grid__image-wrap {
-    /* Establishes the containing block every open popup positions
-        against — already position:relative for the hotspot marker,
-        restated here so this file is self-documenting even if read in
-        isolation from product-grid.liquid. */
     position: relative;
 }
 
 /**
- * PRODUCT POPUP — real centered modal
- * ------------------------------------------------------------------
- * .product-popup is now `position: fixed; inset: 0`, not anchored
- * inside its tile. Backdrop dims the page, panel centers itself via
- * flex. Every tile still renders its OWN independent instance, so
- * only one can ever be un-hidden at a time (enforced in JS).
+ * PRODUCT POPUP — centered modal
+ * .product-popup is `position: fixed; inset: 0`. Backdrop dims the
+ * page, panel centers via flex. Each tile renders its own independent
+ * instance, so only one can be un-hidden at a time (enforced in JS).
  */
 .product-popup {
     position: fixed;
@@ -169,14 +140,8 @@
     -moz-osx-font-smoothing: grayscale;
 }
 
-/* Wraps Color's label+control and Size's label+control as two
-   independent groups (see product-popup.liquid) so the gap between
-   "Color" and "Size" is a deliberate, controlled value rather than
-   whatever happened to fall out of each <p>'s own margin — that's
-   the fix for the cramped/inconsistent spacing between the two
-   fields. Gap between the two groups matches the panel's own
-   top-level rhythm (1.25rem); the tighter 0.5rem below is only
-   between each group's own label and its control. */
+/* Groups Color and Size (label + control) as independent blocks so the
+   gap between them is a controlled value, not incidental margin. */
 .product-popup__variant-picker {
     display: flex;
     flex-direction: column;
@@ -196,29 +161,15 @@
     margin: 0;
 }
 
-/* Color — two-segment (or N-segment) toggle.
-   ------------------------------------------------------------------
-   Previously each button toggled its OWN black background via
-   aria-pressed. That had two problems: (1) the first option rendered
-   pre-selected on open instead of nothing being selected, and (2)
-   switching options was an instant swap — the black fill vanished on
-   one button and reappeared on the other with no motion in between,
-   which also visually swallowed the left-edge swatch-color bar
-   (`::before`) on whichever button was selected, since an
-   unpositioned `::before` paints in normal flow rather than above its
-   own element's background in a predictable way once z-index enters
-   the picture.
-
-   Fixed with a single shared "highlight" element — the sliding black
-   fill — positioned behind the buttons and moved with `transform`.
-   The buttons themselves get `position: relative` + a positive
-   z-index so they, and their own `::before` swatch bar (part of the
-   same paint layer), always render ABOVE the highlight, selected or
-   not — the color bar is never covered again. Nothing is selected on
-   open (every button starts aria-pressed="false" in
-   product-popup.liquid), so the highlight sits at opacity: 0 until
-   gift-guide.js sets --color-index on the first click, then both
-   slides and fades in together. */
+/**
+ * Color — two-segment (or N-segment) toggle.
+ * A single shared "highlight" element slides behind the buttons via
+ * `transform`, driven by --color-index/--color-count (set in JS), so
+ * switching options animates instead of hard-swapping. Buttons sit
+ * above the highlight (position: relative + z-index) so their own
+ * ::before swatch-color bar always stays visible, selected or not.
+ * Nothing is selected on open — the highlight starts at opacity: 0.
+ */
 .product-popup__colors {
     position: relative;
     display: flex;
@@ -284,47 +235,33 @@
     color: #ffffff;
 }
 
-/* Size — custom listbox, NOT a native <select>.
-   ------------------------------------------------------------------
-   Toggle: fixed ~50px height, split into two flex cells — the
-   label/summary text (left, flex: 1) and a dedicated arrow zone
-   (right, fixed width) separated by its own 1px vertical divider.
-   The toggle carries its own permanent 1px border/box-sizing so its
-   size never changes between open and closed.
-
-   List: FLOATS as `position: fixed` over the popup rather than
-   pushing layout — anchored to the viewport, not to
-   `.product-popup__panel`. Was `position: absolute` before, which
-   still worked for NOT pushing layout, but `.product-popup__panel`
-   has its own `overflow-y: auto` (a safety net for very tall popup
-   content) — and an absolutely-positioned descendant still counts
-   toward that ancestor's scrollable overflow the moment it visually
-   extends past the panel's edge. So opening the list was making the
-   *panel itself* start scrolling, which both showed an unwanted
-   scrollbar and could scroll Add to Cart out of view underneath the
-   open list. `position: fixed` has no such relationship to an
-   ancestor's overflow — its containing block is the viewport, full
-   stop — so the panel can never be forced to scroll by this element
-   again, however tall the list gets. The tradeoff: a fixed element
-   can't be told "sit right under the toggle" with CSS alone, so
-   gift-guide.js measures the toggle's on-screen position
-   (getBoundingClientRect) and writes it in as inline top/left/width
-   every time the list opens (and on resize/scroll while it's open,
-   so it can't drift out of place).
-
-   Selected row: the selected size keeps a solid black row while the
-   list stays open, via one shared `.product-popup__size-highlight`
-   element that slides with `transform: translateY(...)`, driven by
-   the --size-index custom property gift-guide.js sets on selection.
-   `--size-row-height` is set once on the wrap so both the highlight
-   and every row inherit the exact same height. */
+/**
+ * Size — custom listbox, not a native <select>.
+ * Toggle: fixed height, label text (left) + arrow zone (right, own
+ * divider), with a permanent border so its size never shifts between
+ * open/closed states.
+ *
+ * List: `position: fixed`, anchored to the viewport rather than the
+ * popup panel — the panel has its own overflow-y for very tall
+ * content, and an absolutely-positioned descendant that visually
+ * extends past the panel's edge would force the panel itself to
+ * scroll. `position: fixed` has no such relationship to an ancestor's
+ * overflow. Trade-off: gift-guide.js measures the toggle's on-screen
+ * position and writes it in as inline top/left/width every time the
+ * list opens (and on resize/scroll while open).
+ *
+ * Selected row: a shared `.product-popup__size-highlight` element
+ * slides via `transform: translateY(...)`, driven by --size-index set
+ * in JS. --size-row-height is set once on the wrap so the highlight
+ * and every row share the exact same height.
+ */
 .product-popup__size-dropdown {
     position: relative;
 }
 
 .product-popup__size-toggle {
     width: 100%;
-    height: 3.125rem; /* ~50px, fixed — never changes between open/closed */
+    height: 3.125rem; /* ~50px, fixed */
     box-sizing: border-box;
     display: flex;
     align-items: stretch;
@@ -372,19 +309,12 @@
     /* Single source of truth for row height — inherited by both the
        sliding highlight and every .product-popup__size-option below. */
     --size-row-height: 2.3rem;
-    position: fixed; /* viewport-anchored — see comment above; top/left/width are set inline by gift-guide.js right before opening */
-    z-index: 30; /* comfortably above the popup panel's own content (panel itself is z-index: 999 in the fixed overlay stack) */
+    position: fixed; /* viewport-anchored — see comment above; top/left/width set inline by gift-guide.js */
+    z-index: 30; /* above the popup panel's own content (panel is z-index: 999) */
     background: #ffffff;
     border: 1px solid #000;
-    /* Collapsed = truly zero height, not just hidden via opacity.
-       Being position: absolute means changing THIS element's own size
-       can never push the toggle/Add to Cart/anything else (that's
-       still what fixed the original layout-shift bug) — but it was
-       still reserving its full ~3-row height at all times, which is
-       what was leaking into .product-popup__panel's own overflow-y
-       and forcing a permanent scrollbar on the whole popup even while
-       closed. Real height (and the scroll it needs) only turns on in
-       the [data-expanded="true"] rule below. */
+    /* Collapsed = zero real height (not just hidden via opacity), so it
+       never contributes to the panel's own overflow-y while closed. */
     max-height: 0;
     overflow: hidden;
     opacity: 0;
@@ -396,8 +326,7 @@
         opacity 200ms ease-out,
         transform 200ms ease-out,
         visibility 200ms ease-out;
-    /* Scrollable but scrollbar-free, per spec — wheel/touch scrolling
-       still works, the track/thumb just never render. */
+    /* Scrollable but scrollbar-free, per spec. */
     scrollbar-width: none; /* Firefox */
     -ms-overflow-style: none; /* legacy Edge */
 }
@@ -411,7 +340,7 @@
 .product-popup__size-dropdown[data-expanded="true"]
     .product-popup__size-options-wrap {
     /* ~3 rows visible; a 4th+ size scrolls inside this box instead of
-       growing the popup — only reserved once actually open. */
+       growing the popup. */
     max-height: calc(var(--size-row-height) * 3);
     overflow-y: auto;
     opacity: 1;
@@ -516,9 +445,8 @@
     cursor: not-allowed;
 }
 
-/* Phase 4: brief error feedback (no matching variant / add.js
-   failure) — swapped in for ~1.8s by gift-guide.js, then the button
-   restores its original label/icon automatically. */
+/* Brief error feedback (no matching variant / add.js failure) —
+   swapped in for ~1.8s by gift-guide.js, then restored automatically. */
 .product-popup__add-to-cart--error {
     background: #b3261e;
 }
@@ -527,14 +455,8 @@
     .product-popup__panel {
         width: 100%;
     }
-    /* Design keeps photo + name/price/description side-by-side at
-       mobile widths too (see the Figma mobile popup reference) — the
-       old rule below stacked the image full-width on top of the text
-       instead, which doesn't match. .product-popup__top's default
-       row layout (see the un-media-queried rule above) already does
-       the right thing on its own; only the image needs to shrink
-       from its desktop 9rem down a bit so there's still comfortable
-       room for the text column on a ~360-402px viewport. */
+    /* Design keeps photo + text side-by-side at mobile widths too —
+       only the image shrinks to leave room for the text column. */
     .product-popup__image {
         width: 7rem;
     }
